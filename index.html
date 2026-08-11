@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LTspice Model Package Generator</title><link rel="stylesheet" href="src/styles.css"></head>
+<body><main><header><p class="eyebrow">DATASHEET TO SIMULATION</p><h1>LTspice Model Package Generator</h1><p>SPICEモデル、専用シンボル、検証回路をひとつのZIPにまとめます。</p></header>
+<section class="panel"><form id="model-form">
+<label>Device name<input id="device-name" value="PC817" required pattern="[A-Za-z0-9_.-]+"></label>
+<label>Device / model<select id="variant"></select></label>
+<label>Temperature (°C)<input id="temperature" type="number" value="27"></label>
+<div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
+<div id="characteristic-fields" class="wide characteristic-grid"></div>
+<div class="wide fit-result"><button type="button" id="fit-button" class="secondary">Fit model parameters</button><output id="fit-output">未フィッティング</output></div>
+<label class="wide">Parameter overrides (JSON)<textarea id="parameters" rows="4">{}</textarea><small>自動推定値を変更する場合だけ指定します。</small></label>
+<div class="wide actions"><button type="submit">Generate LTspice Model Package</button><span id="status" role="status"></span></div>
+</form></section><section class="contents"><h2>Package contents</h2><code>DEVICE.lib · DEVICE.asy · DEVICE_test.asc · model.json · README.txt</code></section></main><script type="module" src="src/app.js"></script></body></html>
