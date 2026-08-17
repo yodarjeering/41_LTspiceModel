@@ -32,8 +32,32 @@ test("diode test schematic wires land on source and generated symbol pins",()=>{
   const model=createDeviceModel({deviceName:"TEST",variant:"Diode",generatedAt:"2026-08-11T00:00:00.000Z"});
   const asc=buildPackage(model).files["TEST_LTspice/TEST_test.asc"];
   assert.match(asc,/SYMBOL voltage 160 160 R0/);
-  assert.match(asc,/WIRE 160 176 336 176/); // source positive to standard diode anode
-  assert.match(asc,/WIRE 160 240 336 240/); // standard diode cathode return
+  assert.match(asc,/SYMBOL TEST 464 176 R0/);
+  assert.match(asc,/SYMBOL res 384 112 R90/);
+  assert.match(asc,/SYMATTR Value 10m/);
+  assert.match(asc,/WIRE 288 128 160 128/); // source positive to resistor
+  assert.match(asc,/WIRE 480 272 480 240/); // diode cathode to return
+});
+
+test("N-type and P-type fixtures share geometry and reverse sweep polarity",()=>{
+  const fixture = variant => {
+    const model=createDeviceModel({deviceName:"DUT",variant,generatedAt:"2026-08-11T00:00:00.000Z"});
+    return buildPackage(model).files["DUT_LTspice/DUT_test.asc"];
+  };
+
+  const npn=fixture("BJT-NPN"),pnp=fixture("BJT-PNP");
+  assert.match(npn,/WIRE 416 64 160 64/);
+  assert.match(pnp,/WIRE 416 64 160 64/);
+  assert.match(npn,/\.dc VCE 0 10 0\.1 VB 0 1 0\.05/);
+  assert.match(pnp,/\.dc VCE 0 -10 -0\.1 VB 0 -1 -0\.05/);
+  assert.match(pnp,/;Plot I\(VCE\) for Ic-Vce curves/);
+
+  const nmos=fixture("MOSFET-NMOS-Basic"),pmos=fixture("MOSFET-PMOS-Basic");
+  assert.match(nmos,/WIRE 400 64 160 64/);
+  assert.match(pmos,/WIRE 400 64 160 64/);
+  assert.match(nmos,/\.dc VDS 0 10 0\.1 VGS 0 10 1/);
+  assert.match(pmos,/\.dc VDS 0 -10 -0\.1 VGS 0 -10 -1/);
+  assert.match(pmos,/;Plot I\(VDS\) for Id-Vds curves/);
 });
 
 test("generated geometry matches the selected LTspice generic symbol",()=>{
