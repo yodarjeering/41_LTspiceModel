@@ -33,6 +33,7 @@ test("diode test schematic wires land on source and generated symbol pins",()=>{
   const asc=buildPackage(model).files["TEST_LTspice/TEST_test.asc"];
   assert.match(asc,/SYMBOL voltage 160 160 R0/);
   assert.match(asc,/SYMBOL TEST 464 176 R0/);
+  assert.match(asc,/TEXT 480 400 Left 2 !\.include TEST\.lib/);
   assert.match(asc,/SYMBOL res 384 112 R90/);
   assert.match(asc,/SYMATTR Value 10m/);
   assert.match(asc,/WIRE 288 128 160 128/); // source positive to resistor
@@ -69,4 +70,25 @@ test("IF-CTR curve is emitted as an LTspice behavioral table",()=>{
   const model=createDeviceModel({deviceName:"PCX",variant:"PhotoCoupler",spiceParameters:{CTR:"0.7"},characteristicCurves:[{name:"IF-CTR",points:[{IF:0.001,CTR:0.5},{IF:0.01,CTR:0.9}]}],generatedAt:"2026-08-11T00:00:00.000Z"});
   const lib=buildPackage(model).files["PCX_LTspice/PCX.lib"];
   assert.match(lib,/table\(max\(I\(DLED\),0\), 0\.001,0\.5, 0\.01,0\.9\)/);
+});
+
+test("optional model parameters are not emitted without source data",()=>{
+  const cases=[
+    ["Diode",/\b(CJO|VJ|M|TT|EG|XTI|TNOM)=/],
+    ["BJT-NPN",/\b(CJE|CJC|TF|TR|EG|XTI|TNOM)=/],
+    ["MOSFET-NMOS-Basic",/\b(CGS|CGD|CBD|TNOM)=/]
+  ];
+  for(const [variant,optionalPattern] of cases){
+    const model=createDeviceModel({deviceName:"DUT",variant,generatedAt:"2026-08-11T00:00:00.000Z"});
+    const lib=buildPackage(model).files["DUT_LTspice/DUT.lib"];
+    assert.doesNotMatch(lib,optionalPattern,variant);
+  }
+});
+
+test("every test schematic explicitly includes its generated model library",()=>{
+  for(const variant of deviceOptions){
+    const model=createDeviceModel({deviceName:"RB1LAM",variant,generatedAt:"2026-08-11T00:00:00.000Z"});
+    const asc=buildPackage(model).files["RB1LAM_LTspice/RB1LAM_test.asc"];
+    assert.match(asc,/!\.include RB1LAM\.lib/,variant);
+  }
 });

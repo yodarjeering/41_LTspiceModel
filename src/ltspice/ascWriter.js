@@ -14,13 +14,20 @@ function symbol(name, x, y, instanceName, value) {
   ];
 }
 
-function finish(lines) {
-  return [...HEADER, ...lines, ""].join("\n");
+function finish(model, lines) {
+  // An explicit include makes the generated test circuit independent of
+  // whether a particular LTspice version honors the symbol's ModelFile field.
+  return [
+    ...HEADER,
+    ...lines,
+    text(480, 400, `.include ${model.deviceName}.lib`),
+    ""
+  ].join("\n");
 }
 
 // Keep this layout aligned with the supplied D_test.asc reference circuit.
 function writeDiodeTest(model) {
-  return finish([
+  return finish(model, [
     wire(288, 128, 160, 128),
     wire(480, 128, 368, 128),
     wire(160, 176, 160, 128),
@@ -50,7 +57,7 @@ function writeBjtTest(model) {
     : ".dc VCE 0 10 0.1 VB 0 1 0.05";
   const plotCurrent = isPnp ? "I(VCE)" : "-I(VCE)";
 
-  return finish([
+  return finish(model, [
     wire(416, 64, 160, 64),
     wire(160, 112, 160, 64),
     wire(416, 112, 416, 64),
@@ -78,7 +85,7 @@ function writeMosfetTest(model) {
   const plotCurrent = isPmos ? "I(VDS)" : "-I(VDS)";
   const instanceName = model.modelType === "SUBCKT" ? "X1" : "M1";
 
-  return finish([
+  return finish(model, [
     wire(400, 64, 160, 64),
     wire(160, 112, 160, 64),
     wire(400, 112, 400, 64),
@@ -99,7 +106,7 @@ function writeMosfetTest(model) {
 }
 
 function writePhotoCouplerTest(model) {
-  return finish([
+  return finish(model, [
     wire(288, 128, 160, 128),
     wire(592, 128, 480, 128),
     wire(160, 256, 160, 208),

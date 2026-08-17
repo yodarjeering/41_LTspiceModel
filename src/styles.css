@@ -111,6 +111,15 @@ small,
   gap: 16px;
 }
 
+.characteristic-stage {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  padding-bottom: 8px;
+  color: #62e6b0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #28453d;
+}
+
 .swap-control {
   display: flex;
   align-items: center;
@@ -120,6 +129,12 @@ small,
 .swap-control input {
   width: auto;
   accent-color: #62e6b0;
+}
+
+.temperature-options {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
 }
 
 .fit-result,
@@ -190,5 +205,9 @@ button:hover {
   .fit-result {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .temperature-options {
+    grid-template-columns: 1fr;
   }
 }

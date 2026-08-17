@@ -1,9 +1,296 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><!-- Standalone offline release: no local server required. -->
+<title>LTspice Model Package Generator</title><style>
+:root {
+  font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
+  color: #edf4f2;
+  background: #071411;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 80% 0, #174d3e 0, transparent 35%), #071411;
+}
+
+main {
+  width: min(980px, calc(100% - 32px));
+  margin: auto;
+  padding: 64px 0;
+}
+
+/* Page introduction */
+header {
+  max-width: 720px;
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: #62e6b0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+h1 {
+  margin: 0.2em 0;
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  line-height: 1;
+}
+
+header > p:last-child {
+  color: #a9bdb7;
+  font-size: 1.1rem;
+}
+
+/* Shared cards */
+.panel,
+.contents {
+  padding: 28px;
+  background: #0e211cdd;
+  border: 1px solid #28453d;
+  border-radius: 20px;
+  box-shadow: 0 20px 70px #0008;
+}
+
+form {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #a9bdb7;
+  font-size: 0.85rem;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 12px;
+  color: #f5faf8;
+  font: inherit;
+  background: #091713;
+  border: 1px solid #35564d;
+  border-radius: 9px;
+}
+
+textarea {
+  font-family: ui-monospace, monospace;
+  resize: vertical;
+}
+
+small,
+.section-title p {
+  color: #78968d;
+}
+
+/* Characteristic fitting controls */
+.section-title {
+  padding-top: 20px;
+  border-top: 1px solid #28453d;
+}
+
+.section-title h2,
+.section-title p {
+  margin: 0 0 6px;
+}
+
+.characteristic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.characteristic-stage {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  padding-bottom: 8px;
+  color: #62e6b0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid #28453d;
+}
+
+.swap-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swap-control input {
+  width: auto;
+  accent-color: #62e6b0;
+}
+
+.temperature-options {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
+}
+
+.fit-result,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.fit-result {
+  padding: 14px;
+  background: #091713;
+  border-radius: 10px;
+}
+
+button {
+  padding: 14px 20px;
+  color: #062018;
+  font-weight: 800;
+  cursor: pointer;
+  background: #62e6b0;
+  border: 0;
+  border-radius: 10px;
+}
+
+button:hover {
+  background: #8bf1c8;
+}
+
+.secondary {
+  color: #62e6b0;
+  background: transparent;
+  border: 1px solid #62e6b0;
+}
+
+#status,
+#fit-output {
+  color: #a9bdb7;
+}
+
+.contents {
+  margin-top: 20px;
+}
+
+.contents h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.contents code {
+  color: #62e6b0;
+}
+
+@media (max-width: 620px) {
+  main {
+    padding: 32px 0;
+  }
+
+  form {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .actions,
+  .fit-result {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .temperature-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+</style></head>
+<body><main><header><p class="eyebrow">DATASHEET TO SIMULATION</p><h1>LTspice Model Package Generator</h1><p>SPICEモデル、専用シンボル、検証回路をひとつのZIPにまとめます。</p></header>
+<section class="panel"><form id="model-form">
+<label>Device name<input id="device-name" value="PC817" required pattern="[A-Za-z0-9_.-]+"></label>
+<label>Device / model<select id="variant"></select></label>
+<label>Temperature (°C)<input id="temperature" type="number" value="27"></label>
+<div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
+<div id="characteristic-fields" class="wide characteristic-grid"></div>
+<div class="wide fit-result"><button type="button" id="fit-button" class="secondary">Fit model parameters</button><output id="fit-output">未フィッティング</output></div>
+<label class="wide">Parameter overrides (JSON)<textarea id="parameters" rows="4">{}</textarea><small>自動推定値を変更する場合だけ指定します。</small></label>
+<div class="wide actions"><button type="submit">Generate LTspice Model Package</button><span id="status" role="status"></span></div>
+</form></section><section class="contents"><h2>Package contents</h2><code>DEVICE.lib · DEVICE.asy · DEVICE_test.asc · model.json · README.txt</code></section></main><script>
+(function () {
+"use strict";
+
+// src/model/deviceModel.js
+const DEFINITIONS = {
+  Diode: { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
+  "BJT-NPN": { modelType: "MODEL", polarity: "NPN", prefix: "Q", pins: ["C", "B", "E"] },
+  "BJT-PNP": { modelType: "MODEL", polarity: "PNP", prefix: "Q", pins: ["C", "B", "E"] },
+  "MOSFET-NMOS-Basic": { modelType: "MODEL", polarity: "NMOS", prefix: "M", pins: ["D", "G", "S"] },
+  "MOSFET-PMOS-Basic": { modelType: "MODEL", polarity: "PMOS", prefix: "M", pins: ["D", "G", "S"] },
+  "MOSFET-NMOS-Advanced": { modelType: "SUBCKT", polarity: "NMOS", prefix: "X", pins: ["D", "G", "S"] },
+  "MOSFET-PMOS-Advanced": { modelType: "SUBCKT", polarity: "PMOS", prefix: "X", pins: ["D", "G", "S"] },
+  PhotoCoupler: { modelType: "SUBCKT", polarity: "PhotoCoupler", prefix: "X", pins: ["A", "K", "C", "E"] }
+};
+
+const deviceOptions = Object.keys(DEFINITIONS);
+
+function createDeviceModel(input) {
+  const definition = DEFINITIONS[input.variant];
+  if (!definition) throw new Error(`Unsupported device variant: ${input.variant}`);
+  const deviceName = String(input.deviceName || "").trim().replace(/[^A-Za-z0-9_.-]/g, "_");
+  if (!deviceName) throw new Error("Device name is required.");
+  const deviceType = input.variant.startsWith("BJT") ? "BJT"
+    : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant;
+  return {
+    schemaVersion: 1,
+    deviceName,
+    deviceType,
+    variant: input.variant,
+    modelType: definition.modelType,
+    polarity: definition.polarity,
+    symbolPrefix: definition.prefix,
+    symbolBase: input.variant === "Diode" ? "diode"
+      : input.variant === "BJT-NPN" ? "npn"
+      : input.variant === "BJT-PNP" ? "pnp"
+      : input.variant.includes("NMOS") ? "nmos"
+      : input.variant.includes("PMOS") ? "pmos" : "opto-coupler",
+    pins: definition.pins.map((name, index) => ({ name, spiceOrder: index + 1 })),
+    spiceParameters: { ...(input.spiceParameters || {}) },
+    characteristicCurves: input.characteristicCurves || [],
+    temperature: Number.isFinite(Number(input.temperature)) ? Number(input.temperature) : 27,
+    fittingError: input.fittingError ?? null,
+    fittingWarnings: input.fittingWarnings || [],
+    parameterSources: input.parameterSources || {},
+    generatedAt: input.generatedAt || new Date().toISOString(),
+    generatorVersion: input.generatorVersion || "1.0.0"
+  };
+}
+
+function assertDeviceModel(model) {
+  if (!model.deviceName || !model.modelType || !Array.isArray(model.pins)) throw new Error("Invalid common model data.");
+  model.pins.forEach((pin, index) => {
+    if (!pin.name || pin.spiceOrder !== index + 1) throw new Error("pins must have contiguous SpiceOrder values starting at 1.");
+  });
+  return model;
+}
+
+// src/model/characteristicFitter.js
 const VT_27 = 0.0256926;
 const BOLTZMANN_EV = 8.617333262e-5;
 
 // This is the single source of truth for datasheet-to-SPICE correspondence.
 // `stage` controls whether a fit is always attempted or only when data exists.
-export const parameterMappings = {
+const parameterMappings = {
   Diode: [
     { key: "iv", stage: "basic", characteristic: "IF-VF", parameters: ["IS", "N", "RS"] },
     { key: "cjVr", stage: "capacitance", characteristic: "Cj-VR", parameters: ["CJO", "VJ", "M"] },
@@ -35,7 +322,7 @@ export const parameterMappings = {
   ]
 };
 
-export function parseCsvPoints(text, columns) {
+function parseCsvPoints(text, columns) {
   const numericTokens = String(text || "")
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
@@ -75,7 +362,7 @@ function unitScale(unit) {
 
 // Accept either long rows (TEMP, X, Y) or graph-tool-style wide rows
 // (X, Y1, Y2...). Tabs are significant because blank Y cells are missing data.
-export function parseTemperaturePoints(text, options) {
+function parseTemperaturePoints(text, options) {
   const {
     xKey,
     yKey,
@@ -127,7 +414,7 @@ export function parseTemperaturePoints(text, options) {
   return points;
 }
 
-export function swapSeriesXY(text, columnCount = 2) {
+function swapSeriesXY(text, columnCount = 2) {
   const values = String(text || "").replace(/[\u3000,;]+/g, " ").trim().split(/\s+/).filter(Boolean);
   if (values.length % columnCount !== 0) return text;
 
@@ -597,7 +884,7 @@ function fitPhoto(data, temperature) {
   return result(state.parameters, state.curves, state.errors, state.warnings, state.parameterSources);
 }
 
-export function fitCharacteristics(variant, data, temperature = 27) {
+function fitCharacteristics(variant, data, temperature = 27) {
   if (variant === "Diode") return fitDiode(data, temperature);
   if (variant.startsWith("BJT")) return fitBjt(data, temperature);
   if (variant.startsWith("MOSFET")) return fitMosfet(data, temperature);
@@ -608,7 +895,7 @@ const optional = (stage, key, label, hint, columns = 2) => ({
   stage, key, label: `${label}（任意）`, hint, sample: "", columns
 });
 
-export const characteristicInputs = {
+const characteristicInputs = {
   Diode: [
     { stage: "basic", key: "iv", label: "IF–VF特性", hint: "VF [V]  IF [A]", sample: "0.55 0.001\n0.62 0.01\n0.70 0.1" },
     optional("temperature", "temperatureIv", "IF–VF温度特性", "縦: TEMP, VF, IF / 横: VF, Y1, Y2...（温度系列とY軸単位を下で指定）", 3),
@@ -638,3 +925,461 @@ export const characteristicInputs = {
     optional("switching", "responseTime", "応答時間特性", "RL [ohm]  TR [s]  TF [s]", 3)
   ]
 };
+
+// src/ltspice/modelWriter.js
+const defaults = {
+  Diode: { IS: "1e-14", N: "1", RS: "0.1" },
+  BJT: { IS: "1e-14", BF: "100", VAF: "100" },
+  MOSFET: { VTO: "2", KP: "1", LAMBDA: "0.01", RD: "10m", RS: "10m" }
+};
+
+function paramsText(params) {
+  return Object.entries(params).filter(([, value]) => value !== "" && value != null)
+    .map(([key, value]) => `${key.toUpperCase()}=${value}`).join(" ");
+}
+
+function writeModel(model) {
+  assertDeviceModel(model);
+  const p = { ...(defaults[model.deviceType] || {}), ...model.spiceParameters };
+  const header = `* ${model.deviceName} - generated by LTspice Model Package Generator\n* Tnom=${model.temperature} degC`;
+  if (model.modelType === "MODEL") {
+    return `${header}\n.model ${model.deviceName} ${model.polarity}(${paramsText(p)})\n`;
+  }
+  const ports = model.pins.map(pin => pin.name).join(" ");
+  if (model.deviceType === "MOSFET") {
+    const internal = `${model.deviceName}__CORE`;
+    return `${header}\n.SUBCKT ${model.deviceName} ${ports}\nM1 D G S S ${internal}\n.model ${internal} ${model.polarity}(${paramsText(p)})\n.ENDS ${model.deviceName}\n`;
+  }
+  const ctr = p.CTR ?? "1";
+  const ctrCurve=model.characteristicCurves.find(curve=>curve.name==="IF-CTR");
+  const baseCtrExpression=ctrCurve?.points?.length
+    ? `table(max(I(DLED),0), ${ctrCurve.points.slice().sort((a,b)=>a.IF-b.IF).map(point=>`${point.IF},${point.CTR}`).join(", ")})`
+    : ctr;
+  const ctrExpression = p.CTRTC
+    ? `(${baseCtrExpression}+${p.CTRTC}*(temp-${p.TNOM ?? model.temperature}))`
+    : baseCtrExpression;
+  const diode = paramsText({ IS: p.IS ?? "1e-14", N: p.N ?? "1.5", RS: p.RS ?? "1" });
+  const outputCapacitance = p.CCE ? `\nCCE C E ${p.CCE}` : "";
+  return `${header}\n.SUBCKT ${model.deviceName} ${ports}\nDLED A K ${model.deviceName}__LED\nBPHOTO C E I={${ctrExpression}*max(I(DLED),0)}\nRCE C E 1G${outputCapacitance}\n.model ${model.deviceName}__LED D(${diode})\n.ENDS ${model.deviceName}\n`;
+}
+
+// src/ltspice/symbolWriter.js
+// Geometry and pin locations are based directly on LTspice's bundled
+// diode.asy, npn.asy, pnp.asy, nmos.asy, pmos.asy and Optos/PC817A.asy.
+const geometry = {
+  diode: ["LINE Normal 0 44 32 44","LINE Normal 0 20 32 20","LINE Normal 32 20 16 44","LINE Normal 0 20 16 44","LINE Normal 16 0 16 20","LINE Normal 16 44 16 64","WINDOW 0 24 0 Left 2","WINDOW 3 24 64 Left 2"],
+  npn: ["LINE Normal 44 76 36 84","LINE Normal 64 96 44 76","LINE Normal 64 96 36 84","LINE Normal 40 80 16 64","LINE Normal 16 80 16 16","LINE Normal 16 32 64 0","LINE Normal 16 48 0 48","WINDOW 0 56 32 Left 2","WINDOW 3 56 68 Left 2"],
+  pnp: ["LINE Normal 16 64 44 76","LINE Normal 44 76 36 84","LINE Normal 16 64 36 84","LINE Normal 40 80 64 96","LINE Normal 16 80 16 16","LINE Normal 16 32 64 0","LINE Normal 16 48 0 48","WINDOW 0 84 32 Left 2","WINDOW 3 84 68 Left 2"],
+  nmos: ["LINE Normal 48 48 48 96","LINE Normal 16 80 48 80","LINE Normal 40 48 48 48","LINE Normal 16 48 40 44","LINE Normal 16 48 40 52","LINE Normal 40 44 40 52","LINE Normal 16 8 16 24","LINE Normal 16 40 16 56","LINE Normal 16 72 16 88","LINE Normal 0 80 8 80","LINE Normal 8 16 8 80","LINE Normal 48 16 16 16","LINE Normal 48 0 48 16","WINDOW 0 56 32 Left 2","WINDOW 3 56 72 Left 2"],
+  pmos: ["LINE Normal 48 48 48 96","LINE Normal 16 80 48 80","LINE Normal 16 48 24 48","LINE Normal 48 48 24 44","LINE Normal 48 48 24 52","LINE Normal 24 44 24 52","LINE Normal 16 8 16 24","LINE Normal 16 40 16 56","LINE Normal 16 72 16 88","LINE Normal 0 80 8 80","LINE Normal 8 16 8 80","LINE Normal 48 16 16 16","LINE Normal 48 0 48 16","WINDOW 0 56 32 Left 2","WINDOW 3 56 72 Left 2"],
+  "opto-coupler": ["LINE Normal -96 -48 -56 -48","LINE Normal -56 -16 -56 -48","LINE Normal -56 16 -56 48","LINE Normal -96 48 -56 48","LINE Normal -80 -16 -32 -16","LINE Normal -56 16 -32 -16","LINE Normal -56 16 -80 -16","LINE Normal -80 16 -32 16","LINE Normal 96 -48 72 -48","LINE Normal 32 0 72 -48","LINE Normal 32 0 68 36","LINE Normal 32 -28 32 28","LINE Normal 96 48 80 48","LINE Normal 80 48 64 40","LINE Normal 80 48 72 32","LINE Normal 64 40 72 32","LINE Normal 24 0 12 -4","LINE Normal 24 0 20 -12","LINE Normal 20 -4 24 0","RECTANGLE Normal -96 -64 96 64","ARC Normal -4 12 20 -12 16 -4 -4 0","ARC Normal -28 12 -4 -12 -28 4 -4 0","WINDOW 0 0 -80 Center 2","WINDOW 3 0 80 Center 2"]
+};
+const pinLocations={diode:[[16,0],[16,64]],npn:[[64,0],[0,48],[64,96]],pnp:[[64,0],[0,48],[64,96]],nmos:[[48,0],[0,80],[48,96]],pmos:[[48,0],[0,80],[48,96]],"opto-coupler":[[-96,-48],[-96,48],[96,-48],[96,48]]};
+
+function writeSymbol(model) {
+  assertDeviceModel(model);const base=model.symbolBase,lines=["Version 4","SymbolType CELL",...geometry[base],`SYMATTR Value ${model.deviceName}`,`SYMATTR Prefix ${model.symbolPrefix}`,`SYMATTR ModelFile ${model.deviceName}.lib`,`SYMATTR Description ${model.variant} generated from LTspice ${base} symbol`];
+  model.pins.forEach((p,index)=>{const [x,y]=pinLocations[base][index];lines.push(`PIN ${x} ${y} NONE 0`,`PINATTR PinName ${p.name}`,`PINATTR SpiceOrder ${p.spiceOrder}`);});
+  return [...lines,""].join("\n");
+}
+
+// src/ltspice/ascWriter.js
+const HEADER = ["Version 4", "SHEET 1 880 680"];
+
+const wire = (x1, y1, x2, y2) => `WIRE ${x1} ${y1} ${x2} ${y2}`;
+const flag = (x, y, name) => `FLAG ${x} ${y} ${name}`;
+const text = (x, y, value) => `TEXT ${x} ${y} Left 2 !${value}`;
+
+function symbol(name, x, y, instanceName, value) {
+  return [
+    `SYMBOL ${name} ${x} ${y} R0`,
+    `SYMATTR InstName ${instanceName}`,
+    `SYMATTR Value ${value}`
+  ];
+}
+
+function finish(model, lines) {
+  // An explicit include makes the generated test circuit independent of
+  // whether a particular LTspice version honors the symbol's ModelFile field.
+  return [
+    ...HEADER,
+    ...lines,
+    text(480, 400, `.include ${model.deviceName}.lib`),
+    ""
+  ].join("\n");
+}
+
+// Keep this layout aligned with the supplied D_test.asc reference circuit.
+function writeDiodeTest(model) {
+  return finish(model, [
+    wire(288, 128, 160, 128),
+    wire(480, 128, 368, 128),
+    wire(160, 176, 160, 128),
+    wire(480, 176, 480, 128),
+    wire(160, 272, 160, 256),
+    wire(480, 272, 480, 240),
+    wire(480, 272, 160, 272),
+    wire(160, 288, 160, 272),
+    flag(160, 288, "0"),
+    ...symbol(model.deviceName, 464, 176, "D1", model.deviceName),
+    ...symbol("voltage", 160, 160, "V1", "0"),
+    "SYMBOL res 384 112 R90",
+    "WINDOW 0 0 56 VBottom 2",
+    "WINDOW 3 32 56 VTop 2",
+    "SYMATTR InstName R1",
+    "SYMATTR Value 10m",
+    text(96, 320, ".dc V1 0 2 1m"),
+    text(96, 352, ".meas DC IF FIND I(D1) AT=1")
+  ]);
+}
+
+// P-type devices reuse the same fixture; signed sweeps reverse the bias.
+function writeBjtTest(model) {
+  const isPnp = model.polarity === "PNP";
+  const sweep = isPnp
+    ? ".dc VCE 0 -10 -0.1 VB 0 -1 -0.05"
+    : ".dc VCE 0 10 0.1 VB 0 1 0.05";
+  const plotCurrent = isPnp ? "I(VCE)" : "-I(VCE)";
+
+  return finish(model, [
+    wire(416, 64, 160, 64),
+    wire(160, 112, 160, 64),
+    wire(416, 112, 416, 64),
+    wire(352, 160, 240, 160),
+    wire(160, 256, 160, 192),
+    wire(240, 256, 240, 240),
+    wire(240, 256, 160, 256),
+    wire(416, 256, 416, 208),
+    wire(416, 256, 240, 256),
+    wire(160, 272, 160, 256),
+    flag(160, 272, "0"),
+    ...symbol(model.deviceName, 352, 112, "Q1", model.deviceName),
+    ...symbol("voltage", 160, 96, "VCE", "0"),
+    ...symbol("voltage", 240, 144, "VB", "0"),
+    text(96, 304, sweep),
+    text(96, 336, `;Plot ${plotCurrent} for Ic-Vce curves`)
+  ]);
+}
+
+function writeMosfetTest(model) {
+  const isPmos = model.polarity === "PMOS";
+  const sweep = isPmos
+    ? ".dc VDS 0 -10 -0.1 VGS 0 -10 -1"
+    : ".dc VDS 0 10 0.1 VGS 0 10 1";
+  const plotCurrent = isPmos ? "I(VDS)" : "-I(VDS)";
+  const instanceName = model.modelType === "SUBCKT" ? "X1" : "M1";
+
+  return finish(model, [
+    wire(400, 64, 160, 64),
+    wire(160, 112, 160, 64),
+    wire(400, 112, 400, 64),
+    wire(352, 192, 240, 192),
+    wire(160, 288, 160, 192),
+    wire(240, 288, 240, 272),
+    wire(240, 288, 160, 288),
+    wire(400, 288, 400, 208),
+    wire(400, 288, 240, 288),
+    wire(160, 304, 160, 288),
+    flag(160, 304, "0"),
+    ...symbol(model.deviceName, 352, 112, instanceName, model.deviceName),
+    ...symbol("voltage", 160, 96, "VDS", "0"),
+    ...symbol("voltage", 240, 176, "VGS", "0"),
+    text(96, 336, sweep),
+    text(96, 368, `;Plot ${plotCurrent} for Id-Vds curves`)
+  ]);
+}
+
+function writePhotoCouplerTest(model) {
+  return finish(model, [
+    wire(288, 128, 160, 128),
+    wire(592, 128, 480, 128),
+    wire(160, 256, 160, 208),
+    wire(288, 256, 288, 224),
+    wire(288, 256, 160, 256),
+    wire(480, 256, 480, 224),
+    wire(480, 256, 288, 256),
+    wire(592, 256, 592, 208),
+    wire(592, 256, 480, 256),
+    flag(160, 256, "0"),
+    ...symbol(model.deviceName, 384, 176, "X1", model.deviceName),
+    ...symbol("current", 160, 128, "IIN", "0"),
+    ...symbol("voltage", 592, 112, "VCC", "5"),
+    text(96, 320, ".dc IIN 0 -20m -0.1m"),
+    text(96, 352, ";IF=-I(IIN), IC=-I(VCC), CTR=I(VCC)/I(IIN)")
+  ]);
+}
+
+function writeTestSchematic(model) {
+  assertDeviceModel(model);
+
+  if (model.deviceType === "Diode") return writeDiodeTest(model);
+  if (model.deviceType === "BJT") return writeBjtTest(model);
+  if (model.deviceType === "MOSFET") return writeMosfetTest(model);
+  return writePhotoCouplerTest(model);
+}
+
+// src/export/jsonWriter.js
+function writeJson(model) {
+  return JSON.stringify(model, null, 2) + "\n";
+}
+
+// src/export/readmeWriter.js
+function writeReadme(model) {
+  const pins = model.pins.map(pin => `${pin.spiceOrder} : ${pin.name}`).join("\n");
+  const curves = model.characteristicCurves.length
+    ? model.characteristicCurves.map((curve, i) => `${i + 1}. ${curve.name || curve.type || "characteristic data"}`).join("\n")
+    : "特性曲線データは登録されていません。";
+  const sources=Object.keys(model.parameterSources||{}).length?Object.entries(model.parameterSources).map(([key,value])=>`${key}: ${value}`).join("\n"):"自動推定元なし（既定値または手動値）";
+  const warnings=model.fittingWarnings?.length?model.fittingWarnings.map(value=>`- ${value}`).join("\n"):"なし";
+  return `${model.deviceName} LTspice Model Package
+========================================
+
+1. LTspiceでの使い方
+このフォルダ内の ${model.deviceName}_test.asc をLTspiceで開き、Runを実行してください。
+新しい回路で使う場合は、.ascと同じフォルダに ${model.deviceName}.asy と ${model.deviceName}.lib を置き、Place ComponentのSchematic Directoryから ${model.deviceName} を配置します。
+別フォルダへ恒久登録する場合は、LTspiceのSymbol Search PathsとSimulation Library Search Pathsを設定してください。
+
+2. 各ファイルの説明
+${model.deviceName}.lib : SPICEモデル本体
+${model.deviceName}.asy : モデルに紐づいたLTspiceシンボル
+${model.deviceName}_test.asc : 特性確認用テスト回路
+model.json : 生成条件・元データ・精度情報
+README.txt : この説明書
+
+3. Pin Assign（SPICE端子順）
+${pins}
+
+4. 使用した特性データ
+${curves}
+
+5. モデルの精度
+Fitting error: ${model.fittingError ?? "未評価"}
+Temperature: ${model.temperature} degC
+Parameter sources:
+${sources}
+Fitting warnings:
+${warnings}
+
+6. 注意事項
+本モデルは入力された特性とパラメータに基づく近似です。実機の全動作領域、絶対最大定格、ばらつきを保証しません。
+シンボルのSpiceOrderとモデル端子順はmodel.jsonのpinsから共通生成されています。端子順を個別に変更しないでください。
+Generator version: ${model.generatorVersion}
+Generated at: ${model.generatedAt}
+`;
+}
+
+// src/export/zipWriter.js
+const encoder = new TextEncoder();
+let crcTable;
+function makeCrcTable() {
+  return Array.from({ length: 256 }, (_, n) => {
+    let c=n; for(let k=0;k<8;k++) c=(c&1)?0xedb88320^(c>>>1):c>>>1; return c>>>0;
+  });
+}
+function crc32(bytes) {
+  crcTable ||= makeCrcTable(); let c=0xffffffff;
+  for (const b of bytes) c=crcTable[(c^b)&0xff]^(c>>>8);
+  return (c^0xffffffff)>>>0;
+}
+function u16(n){ return [n&255,(n>>>8)&255]; }
+function u32(n){ return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]; }
+function dosDateTime(date=new Date()) {
+  const year=Math.max(1980,date.getFullYear());
+  return { time:(date.getHours()<<11)|(date.getMinutes()<<5)|(date.getSeconds()>>>1), date:((year-1980)<<9)|((date.getMonth()+1)<<5)|date.getDate() };
+}
+
+function createZip(files, date=new Date()) {
+  const local=[], central=[]; let offset=0; const dt=dosDateTime(date);
+  for (const [path, content] of Object.entries(files)) {
+    const name=encoder.encode(path.replace(/\\/g,"/")); const data=typeof content==="string"?encoder.encode(content):content; const crc=crc32(data);
+    const localHeader=new Uint8Array([...u32(0x04034b50),...u16(20),...u16(0x800),...u16(0),...u16(dt.time),...u16(dt.date),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...name]);
+    local.push(localHeader,data);
+    central.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x800),...u16(0),...u16(dt.time),...u16(dt.date),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...name]));
+    offset+=localHeader.length+data.length;
+  }
+  const centralSize=central.reduce((n,b)=>n+b.length,0);
+  const end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(central.length),...u16(central.length),...u32(centralSize),...u32(offset),...u16(0)]);
+  const all=[...local,...central,end], size=all.reduce((n,b)=>n+b.length,0), out=new Uint8Array(size); let at=0;
+  for(const bytes of all){out.set(bytes,at);at+=bytes.length;} return out;
+}
+
+// src/ltspice/packageWriter.js
+function buildPackage(model) {
+  assertDeviceModel(model);
+  const root=`${model.deviceName}_LTspice/`;
+  const files={
+    [`${root}${model.deviceName}.lib`]: writeModel(model),
+    [`${root}${model.deviceName}.asy`]: writeSymbol(model),
+    [`${root}${model.deviceName}_test.asc`]: writeTestSchematic(model),
+    [`${root}model.json`]: writeJson(model),
+    [`${root}README.txt`]: writeReadme(model)
+  };
+  return { fileName: `${model.deviceName}_LTspice.zip`, files, bytes: createZip(files, new Date(model.generatedAt)) };
+}
+
+// src/app.js
+const byId = id => document.getElementById(id);
+const variantSelect = byId("variant");
+
+for (const value of deviceOptions) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = value;
+  variantSelect.append(option);
+}
+variantSelect.value = "PhotoCoupler";
+
+// Basic and advanced variants share the same characteristic input fields.
+function characteristicGroup(variant) {
+  if (variant.startsWith("BJT")) return "BJT";
+  if (variant.startsWith("MOSFET")) return "MOSFET";
+  return variant;
+}
+
+function renderFields() {
+  byId("fit-output").textContent = "未フィッティング";
+  const container = byId("characteristic-fields");
+  container.replaceChildren();
+
+  const fields = characteristicInputs[characteristicGroup(variantSelect.value)];
+  const stageLabels = {
+    basic: "Basic parameters",
+    temperature: "Optional: 温度特性",
+    capacitance: "Optional: 容量特性",
+    switching: "Optional: スイッチング特性"
+  };
+  let currentStage;
+
+  for (const field of fields) {
+    if (field.stage !== currentStage) {
+      currentStage = field.stage;
+      const heading = document.createElement("h3");
+      heading.className = "characteristic-stage";
+      heading.textContent = stageLabels[currentStage];
+      container.append(heading);
+    }
+    const label = document.createElement("label");
+    const hint = document.createElement("small");
+    const area = document.createElement("textarea");
+    const swapLabel = document.createElement("label");
+    const swap = document.createElement("input");
+
+    hint.textContent = `${field.hint}（空白・タブで区切る。改行位置は任意）`;
+    area.rows = 5;
+    area.dataset.characteristic = field.key;
+    area.dataset.columns = field.columns || 2;
+    area.value = field.sample;
+    swap.type = "checkbox";
+    swap.dataset.swap = field.key;
+    swapLabel.className = "swap-control";
+    swapLabel.append(swap, " X/Yを入れ替える");
+
+    label.append(field.label, hint, area);
+
+    if (field.stage === "temperature") {
+      const options = document.createElement("div");
+      const temperatures = document.createElement("input");
+      temperatures.type = "text";
+      temperatures.placeholder = "Y1, Y2...の温度（例: 25, 65, 105）";
+      temperatures.dataset.temperatureSeries = field.key;
+      options.className = "temperature-options";
+      options.append(temperatures);
+
+      if (field.yQuantity !== "ratio") {
+        const unit = document.createElement("select");
+        unit.dataset.temperatureUnit = field.key;
+        for (const value of ["A", "mA", "uA"]) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = `Y軸: ${value}`;
+          unit.append(option);
+        }
+        unit.value = "A";
+        options.append(unit);
+      }
+      label.append(options);
+    } else {
+      label.append(swapLabel);
+    }
+    container.append(label);
+  }
+}
+
+function collectData() {
+  const fields = document.querySelectorAll("[data-characteristic]");
+  const entries = [...fields].flatMap(element => {
+    const key = element.dataset.characteristic;
+    const swap = document.querySelector(`[data-swap="${key}"]`);
+    const value = swap?.checked
+      ? swapSeriesXY(element.value, Number(element.dataset.columns))
+      : element.value;
+    const temperatures = document.querySelector(`[data-temperature-series="${key}"]`);
+    const unit = document.querySelector(`[data-temperature-unit="${key}"]`);
+    return [
+      [key, value],
+      ...(temperatures ? [[`${key}Temperatures`, temperatures.value]] : []),
+      ...(unit ? [[`${key}Unit`, unit.value]] : [])
+    ];
+  });
+  return Object.fromEntries(entries);
+}
+
+function runFit() {
+  const fit = fitCharacteristics(
+    variantSelect.value,
+    collectData(),
+    Number(byId("temperature").value)
+  );
+  const warning = fit.warnings?.length
+    ? ` / 注意: ${fit.warnings.join(" ")}`
+    : "";
+
+  byId("fit-output").textContent =
+    `推定値: ${JSON.stringify(fit.parameters)} / ` +
+    `RMSE: ${fit.error.toPrecision(4)}${warning}`;
+  return fit;
+}
+
+variantSelect.addEventListener("change", renderFields);
+byId("fit-button").addEventListener("click", () => {
+  try {
+    runFit();
+  } catch (error) {
+    byId("fit-output").textContent = error.message;
+  }
+});
+renderFields();
+
+byId("model-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const status = byId("status");
+
+  try {
+    const fit = runFit();
+    const overrides = JSON.parse(byId("parameters").value || "{}");
+    const model = createDeviceModel({
+      deviceName: byId("device-name").value,
+      variant: variantSelect.value,
+      temperature: byId("temperature").value,
+      fittingError: fit.error,
+      fittingWarnings: fit.warnings,
+      parameterSources: fit.parameterSources,
+      spiceParameters: { ...fit.parameters, ...overrides },
+      characteristicCurves: fit.curves
+    });
+
+    // Build the package in memory, then hand it to the browser as a download.
+    const pkg = buildPackage(model);
+    const blob = new Blob([pkg.bytes], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = pkg.fileName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    status.textContent = `${pkg.fileName} を生成しました`;
+  } catch (error) {
+    status.textContent = error.message;
+  }
+});
+})();
+</script></body></html>

@@ -1,9 +1,9 @@
 import { assertDeviceModel } from "../model/deviceModel.js";
 
 const defaults = {
-  Diode: { IS: "1e-14", N: "1", RS: "0.1", CJO: "10p", TT: "10n" },
-  BJT: { IS: "1e-14", BF: "100", VAF: "100", CJE: "10p", CJC: "5p", TF: "1n" },
-  MOSFET: { VTO: "2", KP: "1", LAMBDA: "0.01", RD: "10m", RS: "10m", CGS: "100p", CGD: "50p" }
+  Diode: { IS: "1e-14", N: "1", RS: "0.1" },
+  BJT: { IS: "1e-14", BF: "100", VAF: "100" },
+  MOSFET: { VTO: "2", KP: "1", LAMBDA: "0.01", RD: "10m", RS: "10m" }
 };
 
 function paramsText(params) {
@@ -25,9 +25,13 @@ export function writeModel(model) {
   }
   const ctr = p.CTR ?? "1";
   const ctrCurve=model.characteristicCurves.find(curve=>curve.name==="IF-CTR");
-  const ctrExpression=ctrCurve?.points?.length
+  const baseCtrExpression=ctrCurve?.points?.length
     ? `table(max(I(DLED),0), ${ctrCurve.points.slice().sort((a,b)=>a.IF-b.IF).map(point=>`${point.IF},${point.CTR}`).join(", ")})`
     : ctr;
-  const diode = paramsText({ IS: p.IS ?? "1e-14", N: p.N ?? "1.5", RS: p.RS ?? "1", CJO: p.CJO ?? "10p" });
-  return `${header}\n.SUBCKT ${model.deviceName} ${ports}\nDLED A K ${model.deviceName}__LED\nBPHOTO C E I={${ctrExpression}*max(I(DLED),0)}\nRCE C E 1G\nCCE C E ${p.CCE ?? "10p"}\n.model ${model.deviceName}__LED D(${diode})\n.ENDS ${model.deviceName}\n`;
+  const ctrExpression = p.CTRTC
+    ? `(${baseCtrExpression}+${p.CTRTC}*(temp-${p.TNOM ?? model.temperature}))`
+    : baseCtrExpression;
+  const diode = paramsText({ IS: p.IS ?? "1e-14", N: p.N ?? "1.5", RS: p.RS ?? "1" });
+  const outputCapacitance = p.CCE ? `\nCCE C E ${p.CCE}` : "";
+  return `${header}\n.SUBCKT ${model.deviceName} ${ports}\nDLED A K ${model.deviceName}__LED\nBPHOTO C E I={${ctrExpression}*max(I(DLED),0)}\nRCE C E 1G${outputCapacitance}\n.model ${model.deviceName}__LED D(${diode})\n.ENDS ${model.deviceName}\n`;
 }
