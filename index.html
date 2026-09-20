@@ -3,7 +3,7 @@
 <body><main><header><p class="eyebrow">DATASHEET TO SIMULATION</p><h1>LTspice Model Package Generator</h1><p>SPICEモデル、専用シンボル、検証回路をひとつのZIPにまとめます。</p></header>
 <section class="panel"><form id="model-form">
 <label>Device name<input id="device-name" value="PC817" required pattern="[A-Za-z0-9_.-]+"></label>
-<label>Device / model<select id="variant"></select></label>
+<div class="model-field"><span class="field-label">Device / model</span><div id="model-picker" class="model-picker"><button type="button" id="model-picker-button" class="model-picker-button" aria-haspopup="dialog" aria-expanded="false"></button><div id="model-picker-popover" class="model-picker-popover" role="dialog" aria-label="Device model selection" hidden><div id="model-picker-options" class="model-picker-options" role="listbox" aria-label="Device models"></div><div id="model-preview" class="model-preview" aria-live="polite"></div></div></div><select id="variant" class="native-model-select" aria-hidden="true" tabindex="-1"></select></div>
 <label>Temperature (°C)<input id="temperature" type="number" value="27"></label>
 <div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
 <div id="characteristic-fields" class="wide characteristic-grid"></div>

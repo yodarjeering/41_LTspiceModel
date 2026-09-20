@@ -5,6 +5,7 @@ import {
   swapSeriesXY
 } from "./model/characteristicFitter.js";
 import { buildPackage } from "./ltspice/packageWriter.js";
+import { symbolGeometry, symbolPinLocations } from "./ltspice/symbolWriter.js";
 
 const byId = id => document.getElementById(id);
 const variantSelect = byId("variant");
@@ -16,6 +17,137 @@ for (const value of deviceOptions) {
   variantSelect.append(option);
 }
 variantSelect.value = "PhotoCoupler";
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+function svgElement(name, attributes = {}) {
+  const element = document.createElementNS(SVG_NAMESPACE, name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  return element;
+}
+
+function renderSymbolPreview(variant) {
+  const preview = byId("model-preview");
+  const model = createDeviceModel({ deviceName: "DEVICE", variant, generatedAt: "preview" });
+  const commands = symbolGeometry[model.symbolBase];
+  const pins = symbolPinLocations[model.symbolBase];
+  const coordinates = pins.flat();
+
+  for (const command of commands) {
+    const parts = command.split(/\s+/);
+    if (parts[0] === "LINE") coordinates.push(...parts.slice(2, 6).map(Number));
+    if (parts[0] === "RECTANGLE") coordinates.push(...parts.slice(2, 6).map(Number));
+  }
+  const xs = coordinates.filter((_, index) => index % 2 === 0);
+  const ys = coordinates.filter((_, index) => index % 2 === 1);
+  const minX = Math.min(...xs) - 34;
+  const minY = Math.min(...ys) - 26;
+  const width = Math.max(...xs) - minX + 34;
+  const height = Math.max(...ys) - minY + 26;
+  const svg = svgElement("svg", {
+    viewBox: `${minX} ${minY} ${width} ${height}`,
+    role: "img",
+    "aria-label": `${variant} LTspice symbol`
+  });
+
+  for (const command of commands) {
+    const parts = command.split(/\s+/);
+    if (parts[0] === "LINE") {
+      const [x1, y1, x2, y2] = parts.slice(2, 6);
+      svg.append(svgElement("line", { x1, y1, x2, y2 }));
+    } else if (parts[0] === "RECTANGLE") {
+      const [x1, y1, x2, y2] = parts.slice(2, 6).map(Number);
+      svg.append(svgElement("rect", {
+        x: Math.min(x1, x2), y: Math.min(y1, y2),
+        width: Math.abs(x2 - x1), height: Math.abs(y2 - y1)
+      }));
+    }
+  }
+
+  model.pins.forEach((pin, index) => {
+    const [x, y] = pins[index];
+    svg.append(svgElement("rect", { x: x - 2, y: y - 2, width: 4, height: 4, class: "pin-marker" }));
+    const label = svgElement("text", {
+      x: x < 0 ? x + 6 : x - 6,
+      y: y - 6,
+      "text-anchor": x < 0 ? "start" : "end"
+    });
+    label.textContent = `${pin.spiceOrder}:${pin.name}`;
+    svg.append(label);
+  });
+
+  const title = document.createElement("strong");
+  title.textContent = variant;
+  const details = document.createElement("span");
+  details.textContent = `${model.modelType === "MODEL" ? ".MODEL" : ".SUBCKT"} / Prefix ${model.symbolPrefix}`;
+  const pinText = document.createElement("code");
+  pinText.textContent = model.pins.map(pin => `${pin.spiceOrder}:${pin.name}`).join(" · ");
+  preview.replaceChildren(svg, title, details, pinText);
+}
+
+function initializeModelPicker() {
+  const picker = byId("model-picker");
+  const button = byId("model-picker-button");
+  const popover = byId("model-picker-popover");
+  const options = byId("model-picker-options");
+
+  const close = ({ restoreFocus = false } = {}) => {
+    popover.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    if (restoreFocus) button.focus();
+  };
+  const open = () => {
+    popover.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    renderSymbolPreview(variantSelect.value);
+    for (const option of options.querySelectorAll("[data-model-option]")) {
+      option.setAttribute("aria-selected", String(option.dataset.modelOption === variantSelect.value));
+    }
+    options.querySelector(`[data-model-option="${variantSelect.value}"]`)?.focus();
+  };
+  const selectVariant = variant => {
+    variantSelect.value = variant;
+    button.textContent = variant;
+    variantSelect.dispatchEvent(new Event("change"));
+    close({ restoreFocus: true });
+  };
+
+  for (const variant of deviceOptions) {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "model-picker-option";
+    option.dataset.modelOption = variant;
+    option.setAttribute("role", "option");
+    option.textContent = variant;
+    option.addEventListener("pointerenter", () => renderSymbolPreview(variant));
+    option.addEventListener("focus", () => renderSymbolPreview(variant));
+    option.addEventListener("click", () => selectVariant(variant));
+    option.addEventListener("keydown", event => {
+      const all = [...options.querySelectorAll("[data-model-option]")];
+      const index = all.indexOf(option);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        all[(index + direction + all.length) % all.length].focus();
+      } else if (event.key === "Escape") {
+        close({ restoreFocus: true });
+      }
+    });
+    options.append(option);
+  }
+
+  button.textContent = variantSelect.value;
+  button.addEventListener("click", () => popover.hidden ? open() : close());
+  button.addEventListener("keydown", event => {
+    if (["ArrowDown", "Enter", " "].includes(event.key) && popover.hidden) {
+      event.preventDefault();
+      open();
+    }
+  });
+  document.addEventListener("pointerdown", event => {
+    if (!popover.hidden && !picker.contains(event.target)) close();
+  });
+}
 
 // Basic and advanced variants share the same characteristic input fields.
 function characteristicGroup(variant) {
@@ -129,6 +261,7 @@ function runFit() {
 }
 
 variantSelect.addEventListener("change", renderFields);
+initializeModelPicker();
 byId("fit-button").addEventListener("click", () => {
   try {
     runFit();

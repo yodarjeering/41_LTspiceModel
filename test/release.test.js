@@ -12,6 +12,8 @@ test("standalone release embeds all CSS and JavaScript", async () => {
 
   assert.match(html, /<style>[\s\S]*\.characteristic-grid/);
   assert.match(html, /<script>[\s\S]*function fitCharacteristics/);
+  assert.match(html, /model-picker-popover/);
+  assert.match(html, /function renderSymbolPreview/);
   assert.doesNotMatch(html, /<script[^>]+src=/);
   assert.doesNotMatch(html, /<link[^>]+stylesheet/);
   assert.doesNotMatch(html, /\bimport\s+{/);

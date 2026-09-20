@@ -68,6 +68,131 @@ label {
   font-size: 0.85rem;
 }
 
+.model-field {
+  display: grid;
+  gap: 8px;
+}
+
+.field-label {
+  color: #a9bdb7;
+  font-size: 0.85rem;
+}
+
+.native-model-select {
+  display: none;
+}
+
+.model-picker {
+  position: relative;
+}
+
+.model-picker-button {
+  width: 100%;
+  padding: 12px 40px 12px 12px;
+  color: #f5faf8;
+  font-weight: 400;
+  text-align: left;
+  background: #091713;
+  border: 1px solid #35564d;
+  border-radius: 9px;
+}
+
+.model-picker-button::after {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  content: "▾";
+  color: #62e6b0;
+  transform: translateY(-50%);
+}
+
+.model-picker-button:hover {
+  background: #10241e;
+}
+
+.model-picker-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(250px, 1.15fr);
+  width: min(620px, calc(100vw - 64px));
+  overflow: hidden;
+  background: #0e211c;
+  border: 1px solid #35564d;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px #000c;
+}
+
+.model-picker-popover[hidden] {
+  display: none;
+}
+
+.model-picker-options {
+  display: grid;
+  align-content: start;
+  padding: 8px;
+  border-right: 1px solid #28453d;
+}
+
+.model-picker-option {
+  padding: 10px 12px;
+  color: #dce9e5;
+  font-weight: 400;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.model-picker-option:hover,
+.model-picker-option:focus-visible,
+.model-picker-option[aria-selected="true"] {
+  color: #062018;
+  background: #62e6b0;
+}
+
+.model-preview {
+  display: grid;
+  grid-template-rows: minmax(130px, 1fr) auto auto auto;
+  gap: 5px;
+  min-height: 240px;
+  padding: 18px;
+  color: #a9bdb7;
+}
+
+.model-preview svg {
+  width: 100%;
+  height: 140px;
+  color: #62e6b0;
+}
+
+.model-preview line,
+.model-preview rect {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.model-preview .pin-marker {
+  fill: #62e6b0;
+}
+
+.model-preview text {
+  fill: #edf4f2;
+  font-size: 9px;
+}
+
+.model-preview strong {
+  color: #edf4f2;
+}
+
+.model-preview code {
+  color: #62e6b0;
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -209,5 +334,19 @@ button:hover {
 
   .temperature-options {
     grid-template-columns: 1fr;
+  }
+
+  .model-picker-popover {
+    grid-template-columns: 1fr;
+    width: min(420px, calc(100vw - 72px));
+  }
+
+  .model-picker-options {
+    border-right: 0;
+    border-bottom: 1px solid #28453d;
+  }
+
+  .model-preview {
+    min-height: 190px;
   }
 }
