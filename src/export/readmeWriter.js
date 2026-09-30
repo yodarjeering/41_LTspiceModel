@@ -23,6 +23,21 @@ README.txt : この説明書
 3. Pin Assign（SPICE端子順）
 ${pins}
 
+ユーザーコメント:
+${model.comment || "なし"}
+
+ばらつき係数:
+${model.variation?.target ? `対象: ${model.variation.target}\nk=${model.variation.k}, min=${model.variation.min ?? "未設定"}, max=${model.variation.max ?? "未設定"}\n対象値をk倍します。min/max指定時は検証回路の.stepで各指定値を比較します。同一モデルの全インスタンスに共通で、ランダム個体差ではありません。` : "外部モデルのため対象外"}
+
+CMOSデータシート設定（基本単位: V/A/s）:
+${model.cmosParameters ? `${JSON.stringify(model.cmosParameters, null, 2)}\n出力抵抗はVOH/IOH・VOL/IOLから算出。伝搬遅延は両エッジ共通。TR/TFは内部ロジックの0–100%遷移時間で、OUTの遷移は負荷にも依存します。温度依存・CMTI・保護動作は対象外。初期値は部品固有の保証値ではありません。` : "なし"}
+
+サイリスタ／トライアックのデータシート設定（V/A/Ω）:
+${model.thyristorParameters ? `${JSON.stringify(model.thyristorParameters, null, 2)}\nVT=VTO+RD*IT。onMode=pointはVTOを仮定した1点校正、twoは2点直線フィット、directは直接入力です。IGT、IL、IHを動作しきい値に使用。VGTは共通IGTにおけるゲート電圧。漏れ抵抗=VDRM/IDRM（逆方向も共通）。トライアックのQII/QIII/QIVはIGTのみ個別設定でき、QIVはq4Enabledがtrueのときのみ点弧します。IL/IH/VGT/オン特性は全象限共通。内部状態の時定数10nsは数値安定化用で、tq等の実部品の時間特性ではありません。温度、dv/dt、di/dt、ブレークオーバー、絶対最大定格超過時の破壊は未モデル化です。` : "なし"}
+
+外部モデル:
+${model.externalModel ? `参照先: ${model.externalModel.libraryPath}\n.SUBCKT: ${model.externalModel.subcircuit}\n元モデルの端子順: ${model.externalModel.pinOrder.join(" ")}\nモデル本体は同梱されていません。メーカーから取得した元ファイルと依存ライブラリを参照先に配置してください。電源・LED電流・負荷は使用部品の定格に合わせて調整してください。` : "なし"}
+
 4. 使用した特性データ
 ${curves}
 

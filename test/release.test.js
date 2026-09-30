@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Script } from "node:vm";
 import { buildRelease } from "../scripts/build-release.mjs";
 
 test("standalone release embeds all CSS and JavaScript", async () => {
@@ -18,4 +19,6 @@ test("standalone release embeds all CSS and JavaScript", async () => {
   assert.doesNotMatch(html, /<link[^>]+stylesheet/);
   assert.doesNotMatch(html, /\bimport\s+{/);
   assert.doesNotMatch(html, /\bexport\s+(?:const|function)/);
+  const javascript = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  assert.doesNotThrow(() => new Script(javascript));
 });

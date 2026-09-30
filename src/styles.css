@@ -61,6 +61,10 @@ form {
   gap: 20px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 label {
   display: grid;
   gap: 8px;

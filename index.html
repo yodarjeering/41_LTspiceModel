@@ -5,9 +5,43 @@
 <label>Device name<input id="device-name" value="PC817" required pattern="[A-Za-z0-9_.-]+"></label>
 <div class="model-field"><span class="field-label">Device / model</span><div id="model-picker" class="model-picker"><button type="button" id="model-picker-button" class="model-picker-button" aria-haspopup="dialog" aria-expanded="false"></button><div id="model-picker-popover" class="model-picker-popover" role="dialog" aria-label="Device model selection" hidden><div id="model-picker-options" class="model-picker-options" role="listbox" aria-label="Device models"></div><div id="model-preview" class="model-preview" aria-live="polite"></div></div></div><select id="variant" class="native-model-select" aria-hidden="true" tabindex="-1"></select></div>
 <label>Temperature (°C)<input id="temperature" type="number" value="27"></label>
+<label class="wide">モデルへのコメント<textarea id="model-comment" rows="3" placeholder="用途、データシート、測定条件など"></textarea><small>model.json・モデル本体・READMEに保存します。</small></label>
 <div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
 <div id="characteristic-fields" class="wide characteristic-grid"></div>
+<div id="thyristor-settings" class="wide" hidden>
+<p>データシートの同じ温度・測定条件の値を入力してください。初期値は入力例です。IGT・IL・IHを動作しきい値として校正し、オン特性を VT = VTO + RD × IT で近似します。</p>
+<label>オン特性の算出方法<select id="thyristor-mode"><option value="point">VTOを指定し、VTM/ITMの1点からRDを算出</option><option value="two">オン電圧・電流の2点からVTO/RDをフィット</option><option value="direct">データシートのVTO・RDを直接指定</option></select></label>
+<label id="thyristor-q4-label" class="swap-control"><input id="thyristor-q4" type="checkbox">トライアックの第IV象限（T2負・ゲート正）に対応</label>
+<div id="thyristor-parameter-fields" class="characteristic-grid"></div>
+<small>ILはゲートを外した後にラッチするための電流、IHは導通を保持する電流です。VDRM/IDRMは線形漏れ抵抗へ換算し、耐圧破壊は再現しません。トライアックのIL/IH/VGTは全象限共通です。温度依存、dv/dt、di/dt、tqは未対応です。</small>
+</div>
+<label id="cmos-mode-field" class="wide" hidden>CMOSモデルの作成方法<select id="cmos-mode"><option value="datasheet">データシートの数値から作成</option><option value="external">既存ライブラリを参照</option></select></label>
+<div id="cmos-settings" class="wide" hidden>
+<p>以下は入力例です。使用部品のデータシートで置き換えてください。反転／非反転、ヒステリシス、出力抵抗、共通伝搬遅延を近似します。</p>
+<label>LED点灯時の出力<select id="cmos-polarity"><option value="inverting">Low（反転）</option><option value="noninverting">High（非反転）</option></select></label>
+<div id="cmos-parameter-fields" class="characteristic-grid"></div>
+<small>VOH/VOLは指定IOH/IOLでの電圧から出力抵抗へ換算します。tr/tfが10–90%の値なら0.8で割って入力してください。実際のOUTの立上り・立下りは負荷にも依存します。電源範囲、CMTI、温度依存、出力保護はモデル化しません。</small>
+</div>
+<div id="external-model-fields" class="wide" hidden>
+<p>取得済みのメーカー製 .SUBCKT を参照します。モデル本体はZIPに同梱しません。元ファイルを変更せず、参照先に配置してください。</p>
+<p><a href="https://components.omron.com/jp-ja/technical-support/simulation-mosfet-relay" target="_blank" rel="noopener noreferrer">オムロン G3VM MOSFETリレーモデル配布ページ</a>（CMOSロジック出力型とは異なります。取得には会員登録・使用許諾への同意が必要です。）</p>
+<label>ライブラリのパス<input id="external-library" placeholder="C:\Models\G3VM.lib"></label>
+<label>元モデルの .SUBCKT 名<input id="external-subcircuit" placeholder="メーカーのモデル名"></label>
+<label>元モデルの端子順<input id="external-pin-order" placeholder="A K T1 T2"></label>
+<small id="external-pin-help"></small>
+</div>
 <div class="wide fit-result"><button type="button" id="fit-button" class="secondary">Fit model parameters</button><output id="fit-output">未フィッティング</output></div>
 <label class="wide">Parameter overrides (JSON)<textarea id="parameters" rows="4">{}</textarea><small>自動推定値を変更する場合だけ指定します。</small></label>
+<div id="variation-settings" class="wide">
+<h2>部品のばらつき</h2>
+<p>対象値 × kで変化させます。既定はk=1。min/maxは任意で、指定時だけ検証回路に比較用の.step解析を追加します。</p>
+<label>ばらつき対象<select id="variation-target"></select></label>
+<div class="characteristic-grid">
+<label>代表値 k<input id="variation-k" type="number" step="any" value="1" required></label>
+<label>min（任意）<input id="variation-min" type="number" step="any" placeholder="例: 0.8"></label>
+<label>max（任意）<input id="variation-max" type="number" step="any" placeholder="例: 1.2"></label>
+</div>
+<small>同じモデル名の部品には共通のkが適用されます。独立した個体差やMonte Carlo解析ではありません。外部ライブラリ参照時は設定できません。</small>
+</div>
 <div class="wide actions"><button type="submit">Generate LTspice Model Package</button><span id="status" role="status"></span></div>
 </form></section><section class="contents"><h2>Package contents</h2><code>DEVICE.lib · DEVICE.asy · DEVICE_test.asc · model.json · README.txt</code></section></main><script type="module" src="src/app.js"></script></body></html>

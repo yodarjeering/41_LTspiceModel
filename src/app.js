@@ -2,13 +2,72 @@ import { createDeviceModel, deviceOptions } from "./model/deviceModel.js";
 import {
   fitCharacteristics,
   characteristicInputs,
-  swapSeriesXY
+  swapSeriesXY, inputUnits, unitChoices
 } from "./model/characteristicFitter.js";
 import { buildPackage } from "./ltspice/packageWriter.js";
 import { symbolGeometry, symbolPinLocations } from "./ltspice/symbolWriter.js";
+import { cmosFields, validateCmos, variationTargets } from "./model/modelSettings.js";
+import { thyristorFields, fitThyristor } from "./model/thyristorFitter.js";
 
 const byId = id => document.getElementById(id);
 const variantSelect = byId("variant");
+for (const [key, name, unit, value, modes] of thyristorFields) {
+  const label = document.createElement("label");
+  label.textContent = `${name} [${unit}]`;
+  label.dataset.thyristorModes = modes;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "any";
+  input.value = value;
+  input.dataset.thyristor = key;
+  label.append(input);
+  byId("thyristor-parameter-fields").append(label);
+}
+
+function updateThyristorFields() {
+  const active = ["Thyristor", "Triac"].includes(variantSelect.value);
+  const triac = variantSelect.value === "Triac";
+  byId("thyristor-settings").hidden = !active;
+  byId("thyristor-q4-label").hidden = !triac;
+  for (const label of document.querySelectorAll("[data-thyristor-modes]")) {
+    const modes = label.dataset.thyristorModes.split(",");
+    const visible = active && (modes.includes("all") || modes.includes(byId("thyristor-mode").value) || (triac && modes.includes("triac")) || (triac && byId("thyristor-q4").checked && modes.includes("triac4")));
+    label.hidden = !visible;
+    const input = label.querySelector("input");
+    input.disabled = !visible;
+    input.required = visible && !input.dataset.thyristor.startsWith("IGT_Q");
+  }
+}
+
+function collectThyristor() {
+  const input = { onMode: byId("thyristor-mode").value, q4Enabled: byId("thyristor-q4").checked };
+  for (const [key, , unit] of thyristorFields) {
+    const element = document.querySelector(`[data-thyristor="${key}"]`);
+    if (!element.disabled) input[key] = element.value === "" ? "" : Number(element.value) * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1);
+  }
+  return fitThyristor(input, variantSelect.value);
+}
+for (const [key, name, unit, value] of cmosFields) {
+  const label = document.createElement("label");
+  label.textContent = `${name} [${unit}]`;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "any";
+  input.value = value;
+  input.dataset.cmos = key;
+  label.append(input);
+  byId("cmos-parameter-fields").append(label);
+}
+
+function collectCmos() {
+  return validateCmos({
+    ...Object.fromEntries(cmosFields.map(([key, , unit]) => {
+      const input = document.querySelector(`[data-cmos="${key}"]`);
+      return [key, input.value === "" ? "" : Number(input.value) * ({ mA: 1e-3, ns: 1e-9 }[unit] || 1)];
+    })),
+    inverting: byId("cmos-polarity").value === "inverting"
+  });
+}
 
 for (const value of deviceOptions) {
   const option = document.createElement("option");
@@ -162,6 +221,41 @@ function renderFields() {
   container.replaceChildren();
 
   const fields = characteristicInputs[characteristicGroup(variantSelect.value)];
+  const thyristor = ["Thyristor", "Triac"].includes(variantSelect.value);
+  updateThyristorFields();
+  const cmos = variantSelect.value === "PhotoCoupler-CMOS";
+  const external = variantSelect.value === "PhotoMOS-Relay" || (cmos && byId("cmos-mode").value === "external");
+  const manualCmos = cmos && !external;
+  byId("cmos-mode-field").hidden = !cmos;
+  byId("cmos-settings").hidden = !manualCmos;
+  for (const input of document.querySelectorAll("[data-cmos]")) {
+    input.disabled = !manualCmos;
+    input.required = manualCmos;
+  }
+  byId("variation-settings").hidden = external;
+  for (const id of ["variation-k", "variation-min", "variation-max", "variation-target"]) byId(id).disabled = external;
+  const targetSelect = byId("variation-target");
+  const previous = targetSelect.value;
+  targetSelect.replaceChildren();
+  for (const [value, name] of variationTargets(variantSelect.value, external)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = name;
+    targetSelect.append(option);
+  }
+  if ([...targetSelect.options].some(option => option.value === previous)) targetSelect.value = previous;
+  byId("external-model-fields").hidden = !external;
+  byId("parameters").disabled = external || manualCmos || thyristor;
+  byId("fit-button").disabled = external;
+  byId("external-library").required = external;
+  byId("external-subcircuit").required = external;
+  byId("external-pin-order").required = external;
+  if (external) {
+    const pins = variantSelect.value === "PhotoMOS-Relay" ? "A K T1 T2" : "A K VCC GND OUT";
+    byId("external-pin-order").value = pins;
+    byId("external-pin-help").textContent = `使用する端子: ${pins}。元モデルの.SUBCKT宣言の順番に並べ替えてください。各端子を1回ずつ指定します。追加端子を持つモデルは未対応です。`;
+    byId("fit-output").textContent = "外部ライブラリを参照（未評価）";
+  }
   const stageLabels = {
     basic: "Basic parameters",
     temperature: "Optional: 温度特性",
@@ -192,9 +286,25 @@ function renderFields() {
     swap.type = "checkbox";
     swap.dataset.swap = field.key;
     swapLabel.className = "swap-control";
-    swapLabel.append(swap, " X/Yを入れ替える");
+    swapLabel.append(swap, " 入力データのX/Yを入れ替える（単位は上記の特性順）");
 
     label.append(field.label, hint, area);
+    const unitRow = document.createElement("div");
+    unitRow.className = "temperature-options";
+    inputUnits(field).forEach((base, index) => {
+      const unitLabel = document.createElement("label");
+      unitLabel.textContent = `${index === 0 ? "X" : `Y${index}`} 単位`;
+      const unit = document.createElement("select");
+      unit.dataset.seriesUnit = field.key;
+      for (const value of unitChoices(base)) {
+        const option = document.createElement("option");
+        option.value = option.textContent = value;
+        unit.append(option);
+      }
+      unitLabel.append(unit);
+      unitRow.append(unitLabel);
+    });
+    label.append(unitRow);
 
     if (field.stage === "temperature") {
       const options = document.createElement("div");
@@ -205,18 +315,6 @@ function renderFields() {
       options.className = "temperature-options";
       options.append(temperatures);
 
-      if (field.yQuantity !== "ratio") {
-        const unit = document.createElement("select");
-        unit.dataset.temperatureUnit = field.key;
-        for (const value of ["A", "mA", "uA"]) {
-          const option = document.createElement("option");
-          option.value = value;
-          option.textContent = `Y軸: ${value}`;
-          unit.append(option);
-        }
-        unit.value = "A";
-        options.append(unit);
-      }
       label.append(options);
     } else {
       label.append(swapLabel);
@@ -234,17 +332,26 @@ function collectData() {
       ? swapSeriesXY(element.value, Number(element.dataset.columns))
       : element.value;
     const temperatures = document.querySelector(`[data-temperature-series="${key}"]`);
-    const unit = document.querySelector(`[data-temperature-unit="${key}"]`);
     return [
       [key, value],
+      [`${key}Units`, [...document.querySelectorAll(`[data-series-unit="${key}"]`)].map(unit => unit.value)],
       ...(temperatures ? [[`${key}Temperatures`, temperatures.value]] : []),
-      ...(unit ? [[`${key}Unit`, unit.value]] : [])
     ];
   });
   return Object.fromEntries(entries);
 }
 
 function runFit() {
+  if (["Thyristor", "Triac"].includes(variantSelect.value)) {
+    const fit = collectThyristor();
+    byId("fit-output").textContent = `算出値: VTO=${fit.parameters.VTO.toPrecision(5)} V / RD=${fit.parameters.RD.toPrecision(5)} Ω / ROFF=${(fit.parameters.VDRM / fit.parameters.IDRM).toPrecision(5)} Ω。IGT・IL・IHを動作しきい値に反映。精度は未評価。 ${fit.warnings.join(" ")}`;
+    return { ...fit, parameters: {}, thyristorParameters: fit.parameters };
+  }
+  if (variantSelect.value === "PhotoCoupler-CMOS" && byId("cmos-mode").value === "datasheet") {
+    collectCmos();
+    byId("fit-output").textContent = "データシート設定を検証しました（特性誤差は未評価）。";
+    return { parameters: {}, curves: [], error: null, warnings: ["データシート設定による動作近似。温度依存・CMTI・保護動作は未評価。"], parameterSources: { CMOS: "ユーザーのデータシート設定" } };
+  }
   const fit = fitCharacteristics(
     variantSelect.value,
     collectData(),
@@ -256,11 +363,16 @@ function runFit() {
 
   byId("fit-output").textContent =
     `推定値: ${JSON.stringify(fit.parameters)} / ` +
-    `RMSE: ${fit.error.toPrecision(4)}${warning}`;
+    `RMSE: ${fit.error == null ? "未評価" : fit.error.toPrecision(4)}${warning}`;
   return fit;
 }
 
 variantSelect.addEventListener("change", renderFields);
+byId("cmos-mode").addEventListener("change", renderFields);
+for (const id of ["thyristor-mode", "thyristor-q4"]) byId(id).addEventListener("change", () => {
+  updateThyristorFields();
+  byId("fit-output").textContent = "未フィッティング";
+});
 initializeModelPicker();
 byId("fit-button").addEventListener("click", () => {
   try {
@@ -277,16 +389,32 @@ byId("model-form").addEventListener("submit", event => {
 
   try {
     const fit = runFit();
-    const overrides = JSON.parse(byId("parameters").value || "{}");
+    const external = !byId("external-model-fields").hidden;
+    const overrides = byId("parameters").disabled ? {} : JSON.parse(byId("parameters").value || "{}");
     const model = createDeviceModel({
       deviceName: byId("device-name").value,
+      comment: byId("model-comment").value,
+      cmosParameters: variantSelect.value === "PhotoCoupler-CMOS" && !external ? collectCmos() : undefined,
+      thyristorParameters: fit.thyristorParameters,
+      variation: external ? {} : {
+        k: byId("variation-k").value,
+        min: byId("variation-min").value,
+        max: byId("variation-max").value,
+        target: byId("variation-target").value
+      },
+      externalModel: external ? {
+        libraryPath: byId("external-library").value.trim(),
+        subcircuit: byId("external-subcircuit").value.trim(),
+        pinOrder: byId("external-pin-order").value.trim().split(/[\s,]+/)
+      } : null,
       variant: variantSelect.value,
       temperature: byId("temperature").value,
       fittingError: fit.error,
       fittingWarnings: fit.warnings,
       parameterSources: fit.parameterSources,
       spiceParameters: { ...fit.parameters, ...overrides },
-      characteristicCurves: fit.curves
+      characteristicCurves: fit.curves,
+      characteristicInputs: collectData()
     });
 
     // Build the package in memory, then hand it to the browser as a download.

@@ -1,4 +1,5 @@
 import { assertDeviceModel } from "../model/deviceModel.js";
+import { variationName, variationValues } from "../model/modelSettings.js";
 
 const HEADER = ["Version 4", "SHEET 1 880 680"];
 
@@ -21,6 +22,7 @@ function finish(model, lines) {
     ...HEADER,
     ...lines,
     text(480, 400, `.include ${model.deviceName}.lib`),
+    ...(variationValues(model).length > 1 ? [text(96,448,`.step param ${variationName(model)} list ${variationValues(model).join(" ")}`)] : []),
     ""
   ].join("\n");
 }
@@ -128,6 +130,37 @@ function writePhotoCouplerTest(model) {
 export function writeTestSchematic(model) {
   assertDeviceModel(model);
 
+  if (["PhotoMOS-Relay", "PhotoCoupler-CMOS"].includes(model.deviceType)) {
+    const relay = model.deviceType === "PhotoMOS-Relay";
+    return finish(model, [
+      ...symbol(model.deviceName, 384, 176, "X1", model.deviceName),
+      flag(288,128,"LED"), flag(288,224,"0"), flag(480,128,relay ? "LOAD" : "VCC"), flag(480,224,"0"),
+      ...(relay ? [] : [flag(480,176,"OUT")]),
+      text(96,280,`IIN 0 LED PULSE(0 ${model.cmosParameters ? 2 * model.cmosParameters.IF_ON * Math.max(...variationValues(model), 1) : "5m"} 1m 1u 1u 10m 20m)`),
+      text(96,312,`VCC VCC 0 ${model.cmosParameters?.VCC ?? 5}`),
+      text(96,344, relay ? "RLOAD VCC LOAD 1k" : "RLOAD OUT 0 10k"),
+      text(96,376,".tran 0 60m 0 10u")
+    ]);
+  }
+
+  if (["Thyristor", "Triac"].includes(model.deviceType)) {
+    const p = model.thyristorParameters;
+    const kMax = Math.max(...variationValues(model), 1);
+    const amplitude = Math.max(12, 4 * p.VTO * kMax);
+    const load = (amplitude - p.VTO * kMax) / (5 * p.IL * kMax);
+    const gate = 2 * Math.max(p.IGT, p.IGT_Q2 || 0, p.IGT_Q3 || 0, p.IGT_Q4 || 0) * kMax;
+    const x = model.deviceType === "Triac" ? 32 : 16;
+    const gx = model.deviceType === "Triac" ? -16 : -32;
+    return finish(model, [
+      ...symbol(model.deviceName, 320, 128, "X1", model.deviceName),
+      flag(320+x,128,"LOAD"), flag(320+x,192,"0"), flag(320+gx,192,"GATE"),
+      text(96,248,`VMAIN SUPPLY 0 SINE(0 ${amplitude} 50)`),
+      text(96,280,`RLOAD SUPPLY LOAD ${load}`),
+      text(96,312,`VCMD CMD 0 PULSE(0 ${gate} 2m 1u 1u 1m 10m)`),
+      text(96,344,`BG 0 GATE I=V(CMD)${model.deviceType === "Triac" ? "*if(V(SUPPLY)>=0,1,-1)" : ""}`),
+      text(96,376,".tran 0 60m 0 1u")
+    ]);
+  }
   if (model.deviceType === "Diode") return writeDiodeTest(model);
   if (model.deviceType === "BJT") return writeBjtTest(model);
   if (model.deviceType === "MOSFET") return writeMosfetTest(model);

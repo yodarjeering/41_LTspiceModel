@@ -1,13 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDeviceModel, deviceOptions } from "../src/model/deviceModel.js";
+import { createDeviceModel as createRawDeviceModel, deviceOptions } from "../src/model/deviceModel.js";
 import { buildPackage } from "../src/ltspice/packageWriter.js";
 
 const expected={
+  "PhotoMOS-Relay":["SUBCKT","X",["A","K","T1","T2"]], "PhotoCoupler-CMOS":["SUBCKT","X",["A","K","VCC","GND","OUT"]],
+  Thyristor:["SUBCKT","X",["A","G","K"]], Triac:["SUBCKT","X",["T2","G","T1"]],
   Diode:["MODEL","D",["A","K"]], "BJT-NPN":["MODEL","Q",["C","B","E"]], "BJT-PNP":["MODEL","Q",["C","B","E"]],
   "MOSFET-NMOS-Basic":["MODEL","M",["D","G","S"]], "MOSFET-PMOS-Basic":["MODEL","M",["D","G","S"]],
   "MOSFET-NMOS-Advanced":["SUBCKT","X",["D","G","S"]], "MOSFET-PMOS-Advanced":["SUBCKT","X",["D","G","S"]], PhotoCoupler:["SUBCKT","X",["A","K","C","E"]]
 };
+function createDeviceModel(input) {
+  const model = createRawDeviceModel(input);
+  if (["PhotoMOS-Relay", "PhotoCoupler-CMOS"].includes(input.variant)) {
+    model.externalModel = { libraryPath: "vendor.lib", subcircuit: "VENDOR_DEVICE", pinOrder: model.pins.map(pin => pin.name) };
+  }
+  return model;
+}
 function zipNames(bytes){
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength), decoder=new TextDecoder(); let at=0; const names=[];
   while(at+30<=bytes.length && view.getUint32(at,true)===0x04034b50){const size=view.getUint32(at+18,true),nl=view.getUint16(at+26,true),el=view.getUint16(at+28,true);names.push(decoder.decode(bytes.slice(at+30,at+30+nl)));at+=30+nl+el+size;} return names;

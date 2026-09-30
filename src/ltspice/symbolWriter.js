@@ -12,6 +12,24 @@ export const symbolGeometry = {
 };
 export const symbolPinLocations={diode:[[16,0],[16,64]],npn:[[64,0],[0,48],[64,96]],pnp:[[64,0],[0,48],[64,96]],nmos:[[48,0],[0,80],[48,96]],pmos:[[48,0],[0,80],[48,96]],"opto-coupler":[[-96,-48],[-96,48],[96,-48],[96,48]]};
 
+// Triangles match the diode: base 32, height 24.
+symbolGeometry.scr = [...symbolGeometry.diode.filter(line => !line.startsWith("WINDOW")), "LINE Normal 16 44 -4 64", "LINE Normal -4 64 -32 64", "WINDOW 0 24 0 Left 2", "WINDOW 3 24 72 Left 2"];
+symbolGeometry.triac = ["LINE Normal 0 20 64 20", "LINE Normal 0 44 64 44", "LINE Normal 0 20 16 44", "LINE Normal 32 20 16 44", "LINE Normal 32 44 48 20", "LINE Normal 64 44 48 20", "LINE Normal 32 0 32 20", "LINE Normal 32 44 32 64", "LINE Normal 16 44 -4 64", "LINE Normal -4 64 -16 64", "WINDOW 0 72 0 Left 2", "WINDOW 3 72 64 Left 2"];
+symbolPinLocations.scr = [[16,0],[-32,64],[16,64]];
+symbolPinLocations.triac = [[32,0],[-16,64],[32,64]];
+const opticalInput = ["RECTANGLE Normal -96 -64 96 64", "LINE Normal -96 -48 -56 -48", "LINE Normal -56 -48 -56 -12", "LINE Normal -72 -12 -40 -12", "LINE Normal -72 -12 -56 12", "LINE Normal -40 -12 -56 12", "LINE Normal -72 12 -40 12", "LINE Normal -56 12 -56 48", "LINE Normal -56 48 -96 48", "LINE Normal -24 -16 0 8", "LINE Normal 0 8 -12 4", "LINE Normal 0 8 -4 -4", "WINDOW 0 0 -80 Center 2", "WINDOW 3 0 80 Center 2"];
+symbolGeometry["photo-relay"] = [...opticalInput,
+  "LINE Normal 96 -48 64 -48", "LINE Normal 64 -48 64 -32", "LINE Normal 64 -32 40 -32",
+  "LINE Normal 40 -40 40 -8", "LINE Normal 32 -40 32 40", "LINE Normal 40 -16 64 -16",
+  "LINE Normal 64 -16 64 16", "LINE Normal 64 16 40 16", "LINE Normal 40 8 40 40",
+  "LINE Normal 40 32 64 32", "LINE Normal 64 32 64 48", "LINE Normal 64 48 96 48",
+  "LINE Normal 16 0 32 0"];
+symbolGeometry["photo-cmos"] = [...opticalInput,
+  "LINE Normal 24 -24 24 24", "LINE Normal 24 -24 64 0", "LINE Normal 24 24 64 0", "LINE Normal 64 0 96 0",
+  "LINE Normal 40 -14 40 -48", "LINE Normal 40 -48 96 -48", "LINE Normal 40 14 40 48", "LINE Normal 40 48 96 48"];
+symbolPinLocations["photo-relay"] = [[-96,-48],[-96,48],[96,-48],[96,48]];
+symbolPinLocations["photo-cmos"] = [[-96,-48],[-96,48],[96,-48],[96,48],[96,0]];
+
 export function writeSymbol(model) {
   assertDeviceModel(model);const base=model.symbolBase,lines=["Version 4","SymbolType CELL",...symbolGeometry[base],`SYMATTR Value ${model.deviceName}`,`SYMATTR Prefix ${model.symbolPrefix}`,`SYMATTR ModelFile ${model.deviceName}.lib`,`SYMATTR Description ${model.variant} generated from LTspice ${base} symbol`];
   model.pins.forEach((p,index)=>{const [x,y]=symbolPinLocations[base][index];lines.push(`PIN ${x} ${y} NONE 0`,`PINATTR PinName ${p.name}`,`PINATTR SpiceOrder ${p.spiceOrder}`);});

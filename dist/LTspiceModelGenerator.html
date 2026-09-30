@@ -64,6 +64,10 @@ form {
   gap: 20px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -360,17 +364,183 @@ button:hover {
 <label>Device name<input id="device-name" value="PC817" required pattern="[A-Za-z0-9_.-]+"></label>
 <div class="model-field"><span class="field-label">Device / model</span><div id="model-picker" class="model-picker"><button type="button" id="model-picker-button" class="model-picker-button" aria-haspopup="dialog" aria-expanded="false"></button><div id="model-picker-popover" class="model-picker-popover" role="dialog" aria-label="Device model selection" hidden><div id="model-picker-options" class="model-picker-options" role="listbox" aria-label="Device models"></div><div id="model-preview" class="model-preview" aria-live="polite"></div></div></div><select id="variant" class="native-model-select" aria-hidden="true" tabindex="-1"></select></div>
 <label>Temperature (°C)<input id="temperature" type="number" value="27"></label>
+<label class="wide">モデルへのコメント<textarea id="model-comment" rows="3" placeholder="用途、データシート、測定条件など"></textarea><small>model.json・モデル本体・READMEに保存します。</small></label>
 <div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
 <div id="characteristic-fields" class="wide characteristic-grid"></div>
+<div id="thyristor-settings" class="wide" hidden>
+<p>データシートの同じ温度・測定条件の値を入力してください。初期値は入力例です。IGT・IL・IHを動作しきい値として校正し、オン特性を VT = VTO + RD × IT で近似します。</p>
+<label>オン特性の算出方法<select id="thyristor-mode"><option value="point">VTOを指定し、VTM/ITMの1点からRDを算出</option><option value="two">オン電圧・電流の2点からVTO/RDをフィット</option><option value="direct">データシートのVTO・RDを直接指定</option></select></label>
+<label id="thyristor-q4-label" class="swap-control"><input id="thyristor-q4" type="checkbox">トライアックの第IV象限（T2負・ゲート正）に対応</label>
+<div id="thyristor-parameter-fields" class="characteristic-grid"></div>
+<small>ILはゲートを外した後にラッチするための電流、IHは導通を保持する電流です。VDRM/IDRMは線形漏れ抵抗へ換算し、耐圧破壊は再現しません。トライアックのIL/IH/VGTは全象限共通です。温度依存、dv/dt、di/dt、tqは未対応です。</small>
+</div>
+<label id="cmos-mode-field" class="wide" hidden>CMOSモデルの作成方法<select id="cmos-mode"><option value="datasheet">データシートの数値から作成</option><option value="external">既存ライブラリを参照</option></select></label>
+<div id="cmos-settings" class="wide" hidden>
+<p>以下は入力例です。使用部品のデータシートで置き換えてください。反転／非反転、ヒステリシス、出力抵抗、共通伝搬遅延を近似します。</p>
+<label>LED点灯時の出力<select id="cmos-polarity"><option value="inverting">Low（反転）</option><option value="noninverting">High（非反転）</option></select></label>
+<div id="cmos-parameter-fields" class="characteristic-grid"></div>
+<small>VOH/VOLは指定IOH/IOLでの電圧から出力抵抗へ換算します。tr/tfが10–90%の値なら0.8で割って入力してください。実際のOUTの立上り・立下りは負荷にも依存します。電源範囲、CMTI、温度依存、出力保護はモデル化しません。</small>
+</div>
+<div id="external-model-fields" class="wide" hidden>
+<p>取得済みのメーカー製 .SUBCKT を参照します。モデル本体はZIPに同梱しません。元ファイルを変更せず、参照先に配置してください。</p>
+<p><a href="https://components.omron.com/jp-ja/technical-support/simulation-mosfet-relay" target="_blank" rel="noopener noreferrer">オムロン G3VM MOSFETリレーモデル配布ページ</a>（CMOSロジック出力型とは異なります。取得には会員登録・使用許諾への同意が必要です。）</p>
+<label>ライブラリのパス<input id="external-library" placeholder="C:\Models\G3VM.lib"></label>
+<label>元モデルの .SUBCKT 名<input id="external-subcircuit" placeholder="メーカーのモデル名"></label>
+<label>元モデルの端子順<input id="external-pin-order" placeholder="A K T1 T2"></label>
+<small id="external-pin-help"></small>
+</div>
 <div class="wide fit-result"><button type="button" id="fit-button" class="secondary">Fit model parameters</button><output id="fit-output">未フィッティング</output></div>
 <label class="wide">Parameter overrides (JSON)<textarea id="parameters" rows="4">{}</textarea><small>自動推定値を変更する場合だけ指定します。</small></label>
+<div id="variation-settings" class="wide">
+<h2>部品のばらつき</h2>
+<p>対象値 × kで変化させます。既定はk=1。min/maxは任意で、指定時だけ検証回路に比較用の.step解析を追加します。</p>
+<label>ばらつき対象<select id="variation-target"></select></label>
+<div class="characteristic-grid">
+<label>代表値 k<input id="variation-k" type="number" step="any" value="1" required></label>
+<label>min（任意）<input id="variation-min" type="number" step="any" placeholder="例: 0.8"></label>
+<label>max（任意）<input id="variation-max" type="number" step="any" placeholder="例: 1.2"></label>
+</div>
+<small>同じモデル名の部品には共通のkが適用されます。独立した個体差やMonte Carlo解析ではありません。外部ライブラリ参照時は設定できません。</small>
+</div>
 <div class="wide actions"><button type="submit">Generate LTspice Model Package</button><span id="status" role="status"></span></div>
 </form></section><section class="contents"><h2>Package contents</h2><code>DEVICE.lib · DEVICE.asy · DEVICE_test.asc · model.json · README.txt</code></section></main><script>
 (function () {
 "use strict";
 
+// src/model/modelSettings.js
+const cmosFields = [
+  ["VCC", "電源電圧（測定条件）", "V", 5],
+  ["IF_ON", "LED点灯判定電流", "mA", 1.6],
+  ["IF_OFF", "LED消灯判定電流", "mA", 1.2],
+  ["VF", "LED順方向電圧", "V", 1.4],
+  ["IF_REF", "VFの測定電流", "mA", 5],
+  ["VOH", "High出力電圧（IOH時）", "V", 4.5],
+  ["IOH", "High出力電流の絶対値", "mA", 4],
+  ["VOL", "Low出力電圧（IOL時）", "V", 0.2],
+  ["IOL", "Low出力電流", "mA", 4],
+  ["TD", "伝搬遅延（立上り・立下り共通）", "ns", 100],
+  ["TR", "内部ロジック立上り時間（0–100%）", "ns", 20],
+  ["TF", "内部ロジック立下り時間（100–0%）", "ns", 20],
+  ["ICC", "無負荷消費電流", "mA", 1]
+];
+
+function validateCmos(input = {}) {
+  const defaults = Object.fromEntries(cmosFields.map(([key, , unit, value]) => [key, value * ({ mA: 1e-3, ns: 1e-9 }[unit] || 1)]));
+  const p = { ...defaults, ...input };
+  for (const [key] of cmosFields) {
+    if (p[key] === "" || p[key] == null || !Number.isFinite(Number(p[key])) || Number(p[key]) < 0) throw new Error(`CMOS ${key}: 0以上の数値を指定してください。`);
+    p[key] = Number(p[key]);
+  }
+  for (const key of ["VCC", "IF_ON", "IF_OFF", "VF", "IF_REF", "IOH", "IOL", "TR", "TF"]) {
+    if (p[key] <= 0) throw new Error(`CMOS ${key}: 正の値を指定してください。`);
+  }
+  if (p.IF_OFF >= p.IF_ON) throw new Error("LED消灯判定電流は点灯判定電流より小さくしてください。");
+  if (!(p.VOL < p.VOH && p.VOH < p.VCC)) throw new Error("出力電圧は 0 ≤ VOL < VOH < VCC としてください。");
+  p.inverting = input.inverting ?? true;
+  if (typeof p.inverting !== "boolean") throw new Error("CMOS出力極性が不正です。");
+  return p;
+}
+
+function variationTargets(variant, external = false) {
+  if (external || variant === "PhotoMOS-Relay") return [];
+  if (variant === "PhotoCoupler-CMOS") return [["IF_THRESHOLD", "LED判定電流（ON/OFFを同率で変更）"], ["TIMING", "遅延・立上り・立下り時間"], ["ROUT", "High/Low出力抵抗"]];
+  if (variant.startsWith("MOSFET")) return [["KP", "KP：電流係数"], ["VTO", "VTO：しきい値電圧"]];
+  if (["Thyristor", "Triac"].includes(variant)) return [["IGT", "IGT：ゲートトリガ電流（全象限）"], ["HOLDING", "IL・IH：ラッチ／保持電流"], ["ON_VOLTAGE", "VTO・RD：オン電圧"]];
+  if (variant.startsWith("BJT")) return [["BF", "BF：電流増幅率"]];
+  if (variant === "PhotoCoupler") return [["CTR", "CTR：電流伝達率"]];
+  return [["IS", "IS：飽和電流"]];
+}
+
+function validateVariation(input = {}, variant, external = false) {
+  const targets = variationTargets(variant, external);
+  const parse = (value, fallback) => value === "" || value == null ? fallback : Number(value);
+  const k = parse(input.k, 1), min = parse(input.min, null), max = parse(input.max, null);
+  if (![k, min, max].filter(v => v !== null).every(v => Number.isFinite(v) && v > 0)) throw new Error("ばらつき係数は正の数で指定してください。");
+  if ((min !== null && min > k) || (max !== null && max < k)) throw new Error("ばらつき係数は min ≤ k ≤ max としてください。");
+  if (!targets.length && (k !== 1 || min !== null || max !== null)) throw new Error("外部ライブラリのばらつき設定には対応していません。");
+  const target = input.target || targets[0]?.[0] || null;
+  if (targets.length && !targets.some(([key]) => key === target)) throw new Error("この部品で選択できないばらつき対象です。");
+  return { k, min, max, target: targets.length ? target : null };
+}
+
+function variationName(model) {
+  // A name-specific global parameter avoids collisions between different devices.
+  return `K_${[...model.deviceName].map(c => c.charCodeAt(0).toString(16)).join("_")}`;
+}
+
+function variationValues(model) {
+  return [...new Set([model.variation?.min, model.variation?.k ?? 1, model.variation?.max].filter(v => v != null))];
+}
+
+// src/model/thyristorFitter.js
+const thyristorFields = [
+  ["IGT", "IGT ゲートトリガ電流（共通／QI）", "mA", 10, "all"],
+  ["VGT", "VGT：IGT時のゲート電圧", "V", 0.8, "all"],
+  ["IL", "IL ラッチ電流", "mA", 20, "all"],
+  ["IH", "IH 保持電流", "mA", 10, "all"],
+  ["VDRM", "VDRM 漏れ電流の測定電圧", "V", 600, "all"],
+  ["IDRM", "IDRM オフ時漏れ電流", "uA", 5, "all"],
+  ["VTO", "VTO オン特性の切片", "V", 0.8, "point,direct"],
+  ["RD", "RD オン特性の傾き", "ohm", 0.1, "direct"],
+  ["VTM", "VTM オン電圧（第1点）", "V", 1.2, "point,two"],
+  ["ITM", "ITM：第1点の測定電流", "A", 4, "point,two"],
+  ["VTM2", "オン電圧（第2点）", "V", 1.6, "two"],
+  ["ITM2", "第2点の測定電流", "A", 8, "two"],
+  ["IGT_Q2", "QIIのIGT（任意・空欄は共通値）", "mA", "", "triac"],
+  ["IGT_Q3", "QIIIのIGT（任意・空欄は共通値）", "mA", "", "triac"],
+  ["IGT_Q4", "QIVのIGT（任意・空欄は共通値）", "mA", "", "triac4"]
+];
+
+function fitThyristor(input = {}, variant = "Thyristor") {
+  const p = Object.fromEntries(thyristorFields.map(([key, , unit, value]) => [key, value === "" ? null : value * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1)]));
+  Object.assign(p, input);
+  p.onMode = input.onMode || "point";
+  p.q4Enabled = input.q4Enabled ?? false;
+  if (!["point", "two", "direct"].includes(p.onMode)) throw new Error("オン特性の計算方法が不正です。");
+  if (typeof p.q4Enabled !== "boolean") throw new Error("QIVの対応設定が不正です。");
+  const positive = key => {
+    if (p[key] === "" || p[key] == null || !Number.isFinite(Number(p[key])) || Number(p[key]) <= 0) throw new Error(`${key}には正の数を指定してください。`);
+    p[key] = Number(p[key]);
+  };
+  for (const key of ["IGT", "VGT", "IL", "IH", "VDRM", "IDRM"]) positive(key);
+  if (p.IL < p.IH) throw new Error("ILはIH以上にしてください。");
+  if (p.IDRM >= p.IH) throw new Error("IDRMはIHより小さい値にしてください。");
+  if (p.onMode === "two") {
+    for (const key of ["VTM", "ITM", "VTM2", "ITM2"]) positive(key);
+    if (p.ITM2 <= p.ITM || p.VTM2 <= p.VTM) throw new Error("第2点の電流・電圧は第1点より大きくしてください。");
+    p.RD = (p.VTM2 - p.VTM) / (p.ITM2 - p.ITM);
+    p.VTO = p.VTM - p.RD * p.ITM;
+  } else if (p.onMode === "point") {
+    for (const key of ["VTO", "VTM", "ITM"]) positive(key);
+    p.RD = (p.VTM - p.VTO) / p.ITM;
+  }
+  for (const key of ["RD", "VTO"]) positive(key);
+  if (p.onMode === "direct") { p.VTM = null; p.ITM = null; }
+  if (p.onMode !== "two") { p.VTM2 = null; p.ITM2 = null; }
+  if (p.VDRM <= p.VTO) throw new Error("VDRMはVTOより大きい値にしてください。");
+  for (const key of ["IGT_Q2", "IGT_Q3", "IGT_Q4"]) {
+    if (variant !== "Triac" || (key === "IGT_Q4" && !p.q4Enabled)) { p[key] = null; continue; }
+    if (p[key] === "" || p[key] == null) p[key] = p.IGT;
+    positive(key);
+  }
+  const warnings = ["入力値を単一温度・測定条件での動作値として使用します。最大定格を典型値と混同しないでください。", "温度依存・dv/dt誤点弧・di/dt制限・tq・破壊／ブレークオーバーは未モデル化。内部状態の時定数10nsは数値安定化用です。"];
+  if (p.onMode === "point") warnings.push("VTOを仮定し、VTM/ITMの1点からRDを算出しました。VTOもデータシートまたは曲線から指定してください。");
+  if (variant === "Triac") warnings.push("IL・IH・VGT・オン特性は全象限共通。象限差はIGTのみ設定できます。");
+  return { parameters: p, error: null, warnings, parameterSources: {
+    IGT: "データシートのゲートトリガ電流", IL: "データシートのラッチ電流", IH: "データシートの保持電流",
+    VTO: p.onMode === "two" ? "オン特性の2点直線フィット" : "ユーザー指定",
+    RD: p.onMode === "direct" ? "ユーザー指定" : "オン特性から算出", ROFF: "VDRM / IDRM"
+  }, curves: p.onMode === "direct" ? [] : [{ name: "On-state VT-IT", columns: ["VT", "IT"], points: [
+    { VT: p.VTM, IT: p.ITM }, ...(p.onMode === "two" ? [{ VT: p.VTM2, IT: p.ITM2 }] : [])
+  ] }] };
+}
+
 // src/model/deviceModel.js
 const DEFINITIONS = {
+  "PhotoMOS-Relay": { modelType: "SUBCKT", polarity: "PhotoMOS", prefix: "X", pins: ["A", "K", "T1", "T2"] },
+  "PhotoCoupler-CMOS": { modelType: "SUBCKT", polarity: "CMOS", prefix: "X", pins: ["A", "K", "VCC", "GND", "OUT"] },
+  Thyristor: { modelType: "SUBCKT", polarity: "SCR", prefix: "X", pins: ["A", "G", "K"] },
+  Triac: { modelType: "SUBCKT", polarity: "TRIAC", prefix: "X", pins: ["T2", "G", "T1"] },
   Diode: { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
   "BJT-NPN": { modelType: "MODEL", polarity: "NPN", prefix: "Q", pins: ["C", "B", "E"] },
   "BJT-PNP": { modelType: "MODEL", polarity: "PNP", prefix: "Q", pins: ["C", "B", "E"] },
@@ -390,26 +560,37 @@ function createDeviceModel(input) {
   if (!deviceName) throw new Error("Device name is required.");
   const deviceType = input.variant.startsWith("BJT") ? "BJT"
     : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant;
+  const thyristorFit = ["Thyristor", "Triac"].includes(input.variant) ? fitThyristor(input.thyristorParameters, input.variant) : null;
   return {
     schemaVersion: 1,
     deviceName,
+    comment: String(input.comment || ""),
+    characteristicInputs: input.characteristicInputs || {},
+    externalModel: input.externalModel || null,
+    cmosParameters: input.variant === "PhotoCoupler-CMOS" && !input.externalModel ? validateCmos(input.cmosParameters) : null,
+    thyristorParameters: thyristorFit?.parameters || null,
+    variation: validateVariation(input.variation, input.variant, Boolean(input.externalModel)),
     deviceType,
     variant: input.variant,
     modelType: definition.modelType,
     polarity: definition.polarity,
     symbolPrefix: definition.prefix,
     symbolBase: input.variant === "Diode" ? "diode"
+      : input.variant === "Thyristor" ? "scr"
+      : input.variant === "Triac" ? "triac"
+      : input.variant === "PhotoMOS-Relay" ? "photo-relay"
+      : input.variant === "PhotoCoupler-CMOS" ? "photo-cmos"
       : input.variant === "BJT-NPN" ? "npn"
       : input.variant === "BJT-PNP" ? "pnp"
       : input.variant.includes("NMOS") ? "nmos"
       : input.variant.includes("PMOS") ? "pmos" : "opto-coupler",
     pins: definition.pins.map((name, index) => ({ name, spiceOrder: index + 1 })),
     spiceParameters: { ...(input.spiceParameters || {}) },
-    characteristicCurves: input.characteristicCurves || [],
+    characteristicCurves: input.characteristicCurves || thyristorFit?.curves || [],
     temperature: Number.isFinite(Number(input.temperature)) ? Number(input.temperature) : 27,
     fittingError: input.fittingError ?? null,
-    fittingWarnings: input.fittingWarnings || [],
-    parameterSources: input.parameterSources || {},
+    fittingWarnings: input.fittingWarnings || thyristorFit?.warnings || [],
+    parameterSources: input.parameterSources || thyristorFit?.parameterSources || {},
     generatedAt: input.generatedAt || new Date().toISOString(),
     generatorVersion: input.generatorVersion || "1.0.0"
   };
@@ -1024,6 +1205,10 @@ function fitPhoto(data, temperature) {
 }
 
 function fitCharacteristics(variant, data, temperature = 27) {
+  data = normalizeInputUnits(variant, data);
+  if (variant === "PhotoCoupler-CMOS") return { parameters: {}, curves: [], error: null, warnings: ["CMOSはデータシート設定または外部ライブラリを使用します。曲線フィッティングの対象外です。"], parameterSources: {} };
+  if (variant === "PhotoMOS-Relay") return { parameters: {}, curves: [], error: null, warnings: ["メーカーの既存ライブラリを参照します。特性の再フィッティングは行いません。"], parameterSources: {} };
+  if (["Thyristor", "Triac"].includes(variant)) return fitThyristor(data.thyristorParameters, variant);
   if (variant === "Diode") return fitDiode(data, temperature);
   if (variant.startsWith("BJT")) return fitBjt(data, temperature);
   if (variant.startsWith("MOSFET")) return fitMosfet(data, temperature);
@@ -1035,6 +1220,10 @@ const optional = (stage, key, label, hint, columns = 2) => ({
 });
 
 const characteristicInputs = {
+  "PhotoMOS-Relay": [],
+  "PhotoCoupler-CMOS": [],
+  Thyristor: [],
+  Triac: [],
   Diode: [
     { stage: "basic", key: "iv", label: "IF–VF特性", hint: "VF [V]  IF [A]", sample: "0.55 0.001\n0.62 0.01\n0.70 0.1" },
     optional("temperature", "temperatureIv", "IF–VF温度特性", "縦: TEMP, VF, IF / 横: VF, Y1, Y2...（温度系列とY軸単位を下で指定）", 3),
@@ -1065,6 +1254,105 @@ const characteristicInputs = {
   ]
 };
 
+function inputUnits(field) {
+  if (field.stage === "temperature") return field.yQuantity === "ratio" ? ["A", "ratio"] : ["V", "A"];
+  const units = [...field.hint.matchAll(/\[([^\]]+)\]/g)].map(match => match[1]);
+  while (units.length < (field.columns || 2)) units.push("ratio");
+  return units;
+}
+
+function normalizeInputUnits(variant, input) {
+  const group = variant.startsWith("BJT") ? "BJT" : variant.startsWith("MOSFET") ? "MOSFET" : variant;
+  const data = { ...input };
+  const scales = { V: 1, mV: 1e-3, A: 1, mA: 1e-3, uA: 1e-6, F: 1, pF: 1e-12, nF: 1e-9, s: 1, us: 1e-6, ns: 1e-9, Hz: 1, MHz: 1e6, C: 1, nC: 1e-9, ohm: 1, ratio: 1, "%": 0.01 };
+  for (const field of characteristicInputs[group] || []) {
+    if (!hasData(data[field.key]) || !data[`${field.key}Units`]) continue;
+    const bases = inputUnits(field);
+    const units = data[`${field.key}Units`];
+    const factors = bases.map((base, i) => {
+      const unit = units[i] || base;
+      const choices = unitChoices(base);
+      if (!choices.includes(unit)) throw new Error(`${field.label}: 単位 ${unit} は使用できません。`);
+      return scales[unit];
+    });
+    if (field.stage === "temperature") {
+      const points = parseTemperaturePoints(data[field.key], { xKey: "X", yKey: "Y", temperatures: data[`${field.key}Temperatures`], yUnit: "A" });
+      data[field.key] = points.map(p => `${p.TEMP} ${p.X * factors[0]} ${p.Y * factors[1]}`).join("\n");
+      data[`${field.key}Temperatures`] = "";
+      data[`${field.key}Unit`] = "A";
+    } else {
+      const columns = bases.map((_, i) => `c${i}`);
+      data[field.key] = parseCsvPoints(data[field.key], columns).map(p => columns.map((column, i) => p[column] * factors[i]).join(" ")).join("\n");
+    }
+  }
+  return data;
+}
+
+function unitChoices(base) {
+  return ({ V: ["V", "mV"], A: ["A", "mA", "uA"], F: ["F", "nF", "pF"], s: ["s", "us", "ns"], Hz: ["Hz", "MHz"], C: ["C", "nC"], ratio: ["ratio", "%"] })[base] || [base];
+}
+
+// src/ltspice/cmosWriter.js
+function writeCmos(model) {
+  const p = validateCmos(model.cmosParameters);
+  const scale = (value, target) => model.variation?.target === target ? `(${value}*${variationName(model)})` : `${value}`;
+  const on = scale(p.IF_ON, "IF_THRESHOLD"), off = scale(p.IF_OFF, "IF_THRESHOLD");
+  const td = scale(p.TD, "TIMING"), tr = scale(p.TR, "TIMING"), tf = scale(p.TF, "TIMING");
+  const rh = scale(Math.max((p.VCC - p.VOH) / p.IOH, 1e-3), "ROUT");
+  const rl = scale(Math.max(p.VOL / p.IOL, 1e-3), "ROUT");
+  const is = p.IF_REF / Math.expm1(p.VF / (2 * 8.617333262e-5 * 300.15));
+  if (!(is > 0 && Number.isFinite(is))) throw new Error("LEDのVF・測定電流を確認してください。モデル化可能な範囲を超えています。");
+  const outputs = p.inverting ? "LOGIC GND" : "GND LOGIC";
+  return `* Datasheet behavioral approximation, not a vendor transistor-level model.
+* TR/TF describe internal logic slew; OUT slew also depends on load.
+.SUBCKT ${model.deviceName} A K VCC GND OUT
+DLED A K ${model.deviceName}__LED
+.model ${model.deviceName}__LED D(IS=${is} N=2 TNOM=27)
+BSENSE SENSE GND V=I(DLED)
+ALOGIC SENSE GND GND GND GND ${outputs} GND SCHMITT Vt={(${on}+${off})/2} Vh={(${on}-${off})/2} Vhigh=1 Vlow=0 Td={${td}} Trise={${tr}} Tfall={${tf}} tripdt={min(${tr},${tf})/10}
+BHI VCC OUT I=V(VCC,OUT)*limit(V(LOGIC,GND),0,1)/(${rh})
+BLO OUT GND I=V(OUT,GND)*(1-limit(V(LOGIC,GND),0,1))/(${rl})
+RLEAK OUT GND 1T
+BICC VCC GND I=if(V(VCC,GND)>0,${p.ICC},0)
+.ENDS ${model.deviceName}
+`;
+}
+
+// src/ltspice/thyristorWriter.js
+function writeThyristor(model) {
+  const p = fitThyristor(model.thyristorParameters, model.variant).parameters;
+  const triac = model.variant === "Triac";
+  const scale = (value, target) => model.variation?.target === target ? `(${value}*${variationName(model)})` : String(value);
+  const igt = scale(p.IGT, "IGT"), il = scale(p.IL, "HOLDING"), ih = scale(p.IH, "HOLDING");
+  const vto = scale(p.VTO, "ON_VOLTAGE"), rd = scale(p.RD, "ON_VOLTAGE");
+  const gateIs = p.IGT / Math.expm1(p.VGT / (2 * 8.617333262e-5 * 300.15));
+  if (!(gateIs > 0 && Number.isFinite(gateIs))) throw new Error("VGT/IGTがゲートモデルの計算範囲外です。");
+  const forwardGate = triac ? `if(I(VGATE)>=0,I(VGATE)>=${igt},-I(VGATE)>=${scale(p.IGT_Q2, "IGT")})` : `I(VGATE)>=${igt}`;
+  const reverseGate = `if(I(VGATE)<0,-I(VGATE)>=${scale(p.IGT_Q3, "IGT")},${p.q4Enabled ? `I(VGATE)>=${scale(p.IGT_Q4, "IGT")}` : "0"})`;
+  // Capacitor state preserves latching without an algebraic self-reference.
+  const branch = (suffix, sign, gate) => {
+    const voltage = `${sign}V(MAIN,REF)`, current = `${sign}I(VPOWER)`;
+    return `BTRIG${suffix} TRIG${suffix} REF V=if((${voltage}>0)&(${gate}),1,0)
+RTRIG${suffix} TRIG${suffix} REF 1G
+CSTATE${suffix} STATE${suffix} REF 10n IC=0
+RSTATE${suffix} STATE${suffix} REF 1
+BSTATE${suffix} REF STATE${suffix} I=if((${voltage}>0)&(((V(TRIG${suffix},REF)>0.5)&(${current}>${il}))|(V(STATE${suffix},REF)>0.5))&(${current}>${ih}),1,0)
+BON${suffix} MAIN REF I=${sign}if((V(TRIG${suffix},REF)>0.5)|(V(STATE${suffix},REF)>0.5),max((${voltage}-${vto})/${rd},0),0)`;
+  };
+  return `* Datasheet-calibrated behavioral SCR/TRIAC; no thermal or breakdown model.
+* State time constant 10ns is numerical, not specified switching time.
+.SUBCKT ${model.deviceName} ${triac ? "T2 G T1" : "A G K"}
+VPOWER ${triac ? "T2" : "A"} MAIN 0
+VREF REF ${triac ? "T1" : "K"} 0
+VGATE G GI 0
+DGATE GI REF ${model.deviceName}__GATE
+${triac ? `DGATEN REF GI ${model.deviceName}__GATE\n` : ""}.model ${model.deviceName}__GATE D(IS=${gateIs} N=2 TNOM=27)
+ROFF MAIN REF ${p.VDRM / p.IDRM}
+${branch("P", "", forwardGate)}
+${triac ? branch("N", "-", reverseGate) + "\n" : ""}.ENDS ${model.deviceName}
+`;
+}
+
 // src/ltspice/modelWriter.js
 const defaults = {
   Diode: { IS: "1e-14", N: "1", RS: "0.1" },
@@ -1080,19 +1368,39 @@ function paramsText(params) {
 function writeModel(model) {
   assertDeviceModel(model);
   const p = { ...(defaults[model.deviceType] || {}), ...model.spiceParameters };
-  const header = `* ${model.deviceName} - generated by LTspice Model Package Generator\n* Tnom=${model.temperature} degC`;
+  const variation = model.variation;
+  const kName = variationName(model);
+  if (variation?.target && !["PhotoCoupler-CMOS", "Thyristor", "Triac"].includes(model.deviceType)) {
+    const key = variation.target;
+    const value = p[key] ?? (key === "BF" ? "100" : "1");
+    p[key] = `{(${String(value).replace(/^\{(.*)\}$/, "$1")})*${kName}}`;
+  }
+  const comments = String(model.comment || "").split(/\r\n|\r|\n/).map(line => `* ${line}`).join("\n");
+  const header = `${comments}\n* ${model.deviceName} - generated by LTspice Model Package Generator\n* Tnom=${model.temperature} degC${variation?.target ? `\n* Variation target: ${variation.target}\n.param ${kName}=${variation.k}` : ""}`;
+  if (model.deviceType === "PhotoCoupler-CMOS" && !model.externalModel) return `${header}\n${writeCmos(model)}`;
+  if (["Thyristor", "Triac"].includes(model.deviceType)) return `${header}\n${writeThyristor(model)}`;
   if (model.modelType === "MODEL") {
     return `${header}\n.model ${model.deviceName} ${model.polarity}(${paramsText(p)})\n`;
   }
   const ports = model.pins.map(pin => pin.name).join(" ");
+  if (["PhotoMOS-Relay", "PhotoCoupler-CMOS"].includes(model.deviceType)) {
+    const external = model.externalModel;
+    if (!external?.libraryPath || /[\r\n"\x00]/.test(external.libraryPath)) throw new Error("外部ライブラリのパスを指定してください（改行・引用符は使用できません）。");
+    if (!/^[A-Za-z0-9_.-]+$/.test(external.subcircuit || "")) throw new Error("元モデルの.SUBCKT名を指定してください。");
+    if (external.subcircuit.toLowerCase() === model.deviceName.toLowerCase()) throw new Error("Device nameは元の.SUBCKT名と異なる名前にしてください（例: MY_G3VM）。");
+    const expectedPins = model.pins.map(pin => pin.name);
+    const order = external.pinOrder;
+    if (!Array.isArray(order) || order.length !== expectedPins.length || new Set(order).size !== expectedPins.length || order.some(pin => !expectedPins.includes(pin))) throw new Error(`元モデルの端子順には ${expectedPins.join(" ")} を1回ずつ指定してください。`);
+    return `${header}\n* Original vendor library is an external dependency.\n.include "${external.libraryPath}"\n.SUBCKT ${model.deviceName} ${ports}\nXCORE ${order.join(" ")} ${external.subcircuit}\n.ENDS ${model.deviceName}\n`;
+  }
   if (model.deviceType === "MOSFET") {
     const internal = `${model.deviceName}__CORE`;
     return `${header}\n.SUBCKT ${model.deviceName} ${ports}\nM1 D G S S ${internal}\n.model ${internal} ${model.polarity}(${paramsText(p)})\n.ENDS ${model.deviceName}\n`;
   }
-  const ctr = p.CTR ?? "1";
+  const ctr = String(p.CTR ?? "1").replace(/^\{(.*)\}$/, "$1");
   const ctrCurve=model.characteristicCurves.find(curve=>curve.name==="IF-CTR");
   const baseCtrExpression=ctrCurve?.points?.length
-    ? `table(max(I(DLED),0), ${ctrCurve.points.slice().sort((a,b)=>a.IF-b.IF).map(point=>`${point.IF},${point.CTR}`).join(", ")})`
+    ? `(table(max(I(DLED),0), ${ctrCurve.points.slice().sort((a,b)=>a.IF-b.IF).map(point=>`${point.IF},${point.CTR}`).join(", ")}))${variation?.target === "CTR" ? `*${kName}` : ""}`
     : ctr;
   const ctrExpression = p.CTRTC
     ? `(${baseCtrExpression}+${p.CTRTC}*(temp-${p.TNOM ?? model.temperature}))`
@@ -1114,6 +1422,24 @@ const symbolGeometry = {
   "opto-coupler": ["LINE Normal -96 -48 -56 -48","LINE Normal -56 -16 -56 -48","LINE Normal -56 16 -56 48","LINE Normal -96 48 -56 48","LINE Normal -80 -16 -32 -16","LINE Normal -56 16 -32 -16","LINE Normal -56 16 -80 -16","LINE Normal -80 16 -32 16","LINE Normal 96 -48 72 -48","LINE Normal 32 0 72 -48","LINE Normal 32 0 68 36","LINE Normal 32 -28 32 28","LINE Normal 96 48 80 48","LINE Normal 80 48 64 40","LINE Normal 80 48 72 32","LINE Normal 64 40 72 32","LINE Normal 24 0 12 -4","LINE Normal 24 0 20 -12","LINE Normal 20 -4 24 0","RECTANGLE Normal -96 -64 96 64","ARC Normal -4 12 20 -12 16 -4 -4 0","ARC Normal -28 12 -4 -12 -28 4 -4 0","WINDOW 0 0 -80 Center 2","WINDOW 3 0 80 Center 2"]
 };
 const symbolPinLocations={diode:[[16,0],[16,64]],npn:[[64,0],[0,48],[64,96]],pnp:[[64,0],[0,48],[64,96]],nmos:[[48,0],[0,80],[48,96]],pmos:[[48,0],[0,80],[48,96]],"opto-coupler":[[-96,-48],[-96,48],[96,-48],[96,48]]};
+
+// Triangles match the diode: base 32, height 24.
+symbolGeometry.scr = [...symbolGeometry.diode.filter(line => !line.startsWith("WINDOW")), "LINE Normal 16 44 -4 64", "LINE Normal -4 64 -32 64", "WINDOW 0 24 0 Left 2", "WINDOW 3 24 72 Left 2"];
+symbolGeometry.triac = ["LINE Normal 0 20 64 20", "LINE Normal 0 44 64 44", "LINE Normal 0 20 16 44", "LINE Normal 32 20 16 44", "LINE Normal 32 44 48 20", "LINE Normal 64 44 48 20", "LINE Normal 32 0 32 20", "LINE Normal 32 44 32 64", "LINE Normal 16 44 -4 64", "LINE Normal -4 64 -16 64", "WINDOW 0 72 0 Left 2", "WINDOW 3 72 64 Left 2"];
+symbolPinLocations.scr = [[16,0],[-32,64],[16,64]];
+symbolPinLocations.triac = [[32,0],[-16,64],[32,64]];
+const opticalInput = ["RECTANGLE Normal -96 -64 96 64", "LINE Normal -96 -48 -56 -48", "LINE Normal -56 -48 -56 -12", "LINE Normal -72 -12 -40 -12", "LINE Normal -72 -12 -56 12", "LINE Normal -40 -12 -56 12", "LINE Normal -72 12 -40 12", "LINE Normal -56 12 -56 48", "LINE Normal -56 48 -96 48", "LINE Normal -24 -16 0 8", "LINE Normal 0 8 -12 4", "LINE Normal 0 8 -4 -4", "WINDOW 0 0 -80 Center 2", "WINDOW 3 0 80 Center 2"];
+symbolGeometry["photo-relay"] = [...opticalInput,
+  "LINE Normal 96 -48 64 -48", "LINE Normal 64 -48 64 -32", "LINE Normal 64 -32 40 -32",
+  "LINE Normal 40 -40 40 -8", "LINE Normal 32 -40 32 40", "LINE Normal 40 -16 64 -16",
+  "LINE Normal 64 -16 64 16", "LINE Normal 64 16 40 16", "LINE Normal 40 8 40 40",
+  "LINE Normal 40 32 64 32", "LINE Normal 64 32 64 48", "LINE Normal 64 48 96 48",
+  "LINE Normal 16 0 32 0"];
+symbolGeometry["photo-cmos"] = [...opticalInput,
+  "LINE Normal 24 -24 24 24", "LINE Normal 24 -24 64 0", "LINE Normal 24 24 64 0", "LINE Normal 64 0 96 0",
+  "LINE Normal 40 -14 40 -48", "LINE Normal 40 -48 96 -48", "LINE Normal 40 14 40 48", "LINE Normal 40 48 96 48"];
+symbolPinLocations["photo-relay"] = [[-96,-48],[-96,48],[96,-48],[96,48]];
+symbolPinLocations["photo-cmos"] = [[-96,-48],[-96,48],[96,-48],[96,48],[96,0]];
 
 function writeSymbol(model) {
   assertDeviceModel(model);const base=model.symbolBase,lines=["Version 4","SymbolType CELL",...symbolGeometry[base],`SYMATTR Value ${model.deviceName}`,`SYMATTR Prefix ${model.symbolPrefix}`,`SYMATTR ModelFile ${model.deviceName}.lib`,`SYMATTR Description ${model.variant} generated from LTspice ${base} symbol`];
@@ -1143,6 +1469,7 @@ function finish(model, lines) {
     ...HEADER,
     ...lines,
     text(480, 400, `.include ${model.deviceName}.lib`),
+    ...(variationValues(model).length > 1 ? [text(96,448,`.step param ${variationName(model)} list ${variationValues(model).join(" ")}`)] : []),
     ""
   ].join("\n");
 }
@@ -1250,6 +1577,37 @@ function writePhotoCouplerTest(model) {
 function writeTestSchematic(model) {
   assertDeviceModel(model);
 
+  if (["PhotoMOS-Relay", "PhotoCoupler-CMOS"].includes(model.deviceType)) {
+    const relay = model.deviceType === "PhotoMOS-Relay";
+    return finish(model, [
+      ...symbol(model.deviceName, 384, 176, "X1", model.deviceName),
+      flag(288,128,"LED"), flag(288,224,"0"), flag(480,128,relay ? "LOAD" : "VCC"), flag(480,224,"0"),
+      ...(relay ? [] : [flag(480,176,"OUT")]),
+      text(96,280,`IIN 0 LED PULSE(0 ${model.cmosParameters ? 2 * model.cmosParameters.IF_ON * Math.max(...variationValues(model), 1) : "5m"} 1m 1u 1u 10m 20m)`),
+      text(96,312,`VCC VCC 0 ${model.cmosParameters?.VCC ?? 5}`),
+      text(96,344, relay ? "RLOAD VCC LOAD 1k" : "RLOAD OUT 0 10k"),
+      text(96,376,".tran 0 60m 0 10u")
+    ]);
+  }
+
+  if (["Thyristor", "Triac"].includes(model.deviceType)) {
+    const p = model.thyristorParameters;
+    const kMax = Math.max(...variationValues(model), 1);
+    const amplitude = Math.max(12, 4 * p.VTO * kMax);
+    const load = (amplitude - p.VTO * kMax) / (5 * p.IL * kMax);
+    const gate = 2 * Math.max(p.IGT, p.IGT_Q2 || 0, p.IGT_Q3 || 0, p.IGT_Q4 || 0) * kMax;
+    const x = model.deviceType === "Triac" ? 32 : 16;
+    const gx = model.deviceType === "Triac" ? -16 : -32;
+    return finish(model, [
+      ...symbol(model.deviceName, 320, 128, "X1", model.deviceName),
+      flag(320+x,128,"LOAD"), flag(320+x,192,"0"), flag(320+gx,192,"GATE"),
+      text(96,248,`VMAIN SUPPLY 0 SINE(0 ${amplitude} 50)`),
+      text(96,280,`RLOAD SUPPLY LOAD ${load}`),
+      text(96,312,`VCMD CMD 0 PULSE(0 ${gate} 2m 1u 1u 1m 10m)`),
+      text(96,344,`BG 0 GATE I=V(CMD)${model.deviceType === "Triac" ? "*if(V(SUPPLY)>=0,1,-1)" : ""}`),
+      text(96,376,".tran 0 60m 0 1u")
+    ]);
+  }
   if (model.deviceType === "Diode") return writeDiodeTest(model);
   if (model.deviceType === "BJT") return writeBjtTest(model);
   if (model.deviceType === "MOSFET") return writeMosfetTest(model);
@@ -1286,6 +1644,21 @@ README.txt : この説明書
 
 3. Pin Assign（SPICE端子順）
 ${pins}
+
+ユーザーコメント:
+${model.comment || "なし"}
+
+ばらつき係数:
+${model.variation?.target ? `対象: ${model.variation.target}\nk=${model.variation.k}, min=${model.variation.min ?? "未設定"}, max=${model.variation.max ?? "未設定"}\n対象値をk倍します。min/max指定時は検証回路の.stepで各指定値を比較します。同一モデルの全インスタンスに共通で、ランダム個体差ではありません。` : "外部モデルのため対象外"}
+
+CMOSデータシート設定（基本単位: V/A/s）:
+${model.cmosParameters ? `${JSON.stringify(model.cmosParameters, null, 2)}\n出力抵抗はVOH/IOH・VOL/IOLから算出。伝搬遅延は両エッジ共通。TR/TFは内部ロジックの0–100%遷移時間で、OUTの遷移は負荷にも依存します。温度依存・CMTI・保護動作は対象外。初期値は部品固有の保証値ではありません。` : "なし"}
+
+サイリスタ／トライアックのデータシート設定（V/A/Ω）:
+${model.thyristorParameters ? `${JSON.stringify(model.thyristorParameters, null, 2)}\nVT=VTO+RD*IT。onMode=pointはVTOを仮定した1点校正、twoは2点直線フィット、directは直接入力です。IGT、IL、IHを動作しきい値に使用。VGTは共通IGTにおけるゲート電圧。漏れ抵抗=VDRM/IDRM（逆方向も共通）。トライアックのQII/QIII/QIVはIGTのみ個別設定でき、QIVはq4Enabledがtrueのときのみ点弧します。IL/IH/VGT/オン特性は全象限共通。内部状態の時定数10nsは数値安定化用で、tq等の実部品の時間特性ではありません。温度、dv/dt、di/dt、ブレークオーバー、絶対最大定格超過時の破壊は未モデル化です。` : "なし"}
+
+外部モデル:
+${model.externalModel ? `参照先: ${model.externalModel.libraryPath}\n.SUBCKT: ${model.externalModel.subcircuit}\n元モデルの端子順: ${model.externalModel.pinOrder.join(" ")}\nモデル本体は同梱されていません。メーカーから取得した元ファイルと依存ライブラリを参照先に配置してください。電源・LED電流・負荷は使用部品の定格に合わせて調整してください。` : "なし"}
 
 4. 使用した特性データ
 ${curves}
@@ -1358,6 +1731,63 @@ function buildPackage(model) {
 // src/app.js
 const byId = id => document.getElementById(id);
 const variantSelect = byId("variant");
+for (const [key, name, unit, value, modes] of thyristorFields) {
+  const label = document.createElement("label");
+  label.textContent = `${name} [${unit}]`;
+  label.dataset.thyristorModes = modes;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "any";
+  input.value = value;
+  input.dataset.thyristor = key;
+  label.append(input);
+  byId("thyristor-parameter-fields").append(label);
+}
+
+function updateThyristorFields() {
+  const active = ["Thyristor", "Triac"].includes(variantSelect.value);
+  const triac = variantSelect.value === "Triac";
+  byId("thyristor-settings").hidden = !active;
+  byId("thyristor-q4-label").hidden = !triac;
+  for (const label of document.querySelectorAll("[data-thyristor-modes]")) {
+    const modes = label.dataset.thyristorModes.split(",");
+    const visible = active && (modes.includes("all") || modes.includes(byId("thyristor-mode").value) || (triac && modes.includes("triac")) || (triac && byId("thyristor-q4").checked && modes.includes("triac4")));
+    label.hidden = !visible;
+    const input = label.querySelector("input");
+    input.disabled = !visible;
+    input.required = visible && !input.dataset.thyristor.startsWith("IGT_Q");
+  }
+}
+
+function collectThyristor() {
+  const input = { onMode: byId("thyristor-mode").value, q4Enabled: byId("thyristor-q4").checked };
+  for (const [key, , unit] of thyristorFields) {
+    const element = document.querySelector(`[data-thyristor="${key}"]`);
+    if (!element.disabled) input[key] = element.value === "" ? "" : Number(element.value) * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1);
+  }
+  return fitThyristor(input, variantSelect.value);
+}
+for (const [key, name, unit, value] of cmosFields) {
+  const label = document.createElement("label");
+  label.textContent = `${name} [${unit}]`;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "any";
+  input.value = value;
+  input.dataset.cmos = key;
+  label.append(input);
+  byId("cmos-parameter-fields").append(label);
+}
+
+function collectCmos() {
+  return validateCmos({
+    ...Object.fromEntries(cmosFields.map(([key, , unit]) => {
+      const input = document.querySelector(`[data-cmos="${key}"]`);
+      return [key, input.value === "" ? "" : Number(input.value) * ({ mA: 1e-3, ns: 1e-9 }[unit] || 1)];
+    })),
+    inverting: byId("cmos-polarity").value === "inverting"
+  });
+}
 
 for (const value of deviceOptions) {
   const option = document.createElement("option");
@@ -1511,6 +1941,41 @@ function renderFields() {
   container.replaceChildren();
 
   const fields = characteristicInputs[characteristicGroup(variantSelect.value)];
+  const thyristor = ["Thyristor", "Triac"].includes(variantSelect.value);
+  updateThyristorFields();
+  const cmos = variantSelect.value === "PhotoCoupler-CMOS";
+  const external = variantSelect.value === "PhotoMOS-Relay" || (cmos && byId("cmos-mode").value === "external");
+  const manualCmos = cmos && !external;
+  byId("cmos-mode-field").hidden = !cmos;
+  byId("cmos-settings").hidden = !manualCmos;
+  for (const input of document.querySelectorAll("[data-cmos]")) {
+    input.disabled = !manualCmos;
+    input.required = manualCmos;
+  }
+  byId("variation-settings").hidden = external;
+  for (const id of ["variation-k", "variation-min", "variation-max", "variation-target"]) byId(id).disabled = external;
+  const targetSelect = byId("variation-target");
+  const previous = targetSelect.value;
+  targetSelect.replaceChildren();
+  for (const [value, name] of variationTargets(variantSelect.value, external)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = name;
+    targetSelect.append(option);
+  }
+  if ([...targetSelect.options].some(option => option.value === previous)) targetSelect.value = previous;
+  byId("external-model-fields").hidden = !external;
+  byId("parameters").disabled = external || manualCmos || thyristor;
+  byId("fit-button").disabled = external;
+  byId("external-library").required = external;
+  byId("external-subcircuit").required = external;
+  byId("external-pin-order").required = external;
+  if (external) {
+    const pins = variantSelect.value === "PhotoMOS-Relay" ? "A K T1 T2" : "A K VCC GND OUT";
+    byId("external-pin-order").value = pins;
+    byId("external-pin-help").textContent = `使用する端子: ${pins}。元モデルの.SUBCKT宣言の順番に並べ替えてください。各端子を1回ずつ指定します。追加端子を持つモデルは未対応です。`;
+    byId("fit-output").textContent = "外部ライブラリを参照（未評価）";
+  }
   const stageLabels = {
     basic: "Basic parameters",
     temperature: "Optional: 温度特性",
@@ -1541,9 +2006,25 @@ function renderFields() {
     swap.type = "checkbox";
     swap.dataset.swap = field.key;
     swapLabel.className = "swap-control";
-    swapLabel.append(swap, " X/Yを入れ替える");
+    swapLabel.append(swap, " 入力データのX/Yを入れ替える（単位は上記の特性順）");
 
     label.append(field.label, hint, area);
+    const unitRow = document.createElement("div");
+    unitRow.className = "temperature-options";
+    inputUnits(field).forEach((base, index) => {
+      const unitLabel = document.createElement("label");
+      unitLabel.textContent = `${index === 0 ? "X" : `Y${index}`} 単位`;
+      const unit = document.createElement("select");
+      unit.dataset.seriesUnit = field.key;
+      for (const value of unitChoices(base)) {
+        const option = document.createElement("option");
+        option.value = option.textContent = value;
+        unit.append(option);
+      }
+      unitLabel.append(unit);
+      unitRow.append(unitLabel);
+    });
+    label.append(unitRow);
 
     if (field.stage === "temperature") {
       const options = document.createElement("div");
@@ -1554,18 +2035,6 @@ function renderFields() {
       options.className = "temperature-options";
       options.append(temperatures);
 
-      if (field.yQuantity !== "ratio") {
-        const unit = document.createElement("select");
-        unit.dataset.temperatureUnit = field.key;
-        for (const value of ["A", "mA", "uA"]) {
-          const option = document.createElement("option");
-          option.value = value;
-          option.textContent = `Y軸: ${value}`;
-          unit.append(option);
-        }
-        unit.value = "A";
-        options.append(unit);
-      }
       label.append(options);
     } else {
       label.append(swapLabel);
@@ -1583,17 +2052,26 @@ function collectData() {
       ? swapSeriesXY(element.value, Number(element.dataset.columns))
       : element.value;
     const temperatures = document.querySelector(`[data-temperature-series="${key}"]`);
-    const unit = document.querySelector(`[data-temperature-unit="${key}"]`);
     return [
       [key, value],
+      [`${key}Units`, [...document.querySelectorAll(`[data-series-unit="${key}"]`)].map(unit => unit.value)],
       ...(temperatures ? [[`${key}Temperatures`, temperatures.value]] : []),
-      ...(unit ? [[`${key}Unit`, unit.value]] : [])
     ];
   });
   return Object.fromEntries(entries);
 }
 
 function runFit() {
+  if (["Thyristor", "Triac"].includes(variantSelect.value)) {
+    const fit = collectThyristor();
+    byId("fit-output").textContent = `算出値: VTO=${fit.parameters.VTO.toPrecision(5)} V / RD=${fit.parameters.RD.toPrecision(5)} Ω / ROFF=${(fit.parameters.VDRM / fit.parameters.IDRM).toPrecision(5)} Ω。IGT・IL・IHを動作しきい値に反映。精度は未評価。 ${fit.warnings.join(" ")}`;
+    return { ...fit, parameters: {}, thyristorParameters: fit.parameters };
+  }
+  if (variantSelect.value === "PhotoCoupler-CMOS" && byId("cmos-mode").value === "datasheet") {
+    collectCmos();
+    byId("fit-output").textContent = "データシート設定を検証しました（特性誤差は未評価）。";
+    return { parameters: {}, curves: [], error: null, warnings: ["データシート設定による動作近似。温度依存・CMTI・保護動作は未評価。"], parameterSources: { CMOS: "ユーザーのデータシート設定" } };
+  }
   const fit = fitCharacteristics(
     variantSelect.value,
     collectData(),
@@ -1605,11 +2083,16 @@ function runFit() {
 
   byId("fit-output").textContent =
     `推定値: ${JSON.stringify(fit.parameters)} / ` +
-    `RMSE: ${fit.error.toPrecision(4)}${warning}`;
+    `RMSE: ${fit.error == null ? "未評価" : fit.error.toPrecision(4)}${warning}`;
   return fit;
 }
 
 variantSelect.addEventListener("change", renderFields);
+byId("cmos-mode").addEventListener("change", renderFields);
+for (const id of ["thyristor-mode", "thyristor-q4"]) byId(id).addEventListener("change", () => {
+  updateThyristorFields();
+  byId("fit-output").textContent = "未フィッティング";
+});
 initializeModelPicker();
 byId("fit-button").addEventListener("click", () => {
   try {
@@ -1626,16 +2109,32 @@ byId("model-form").addEventListener("submit", event => {
 
   try {
     const fit = runFit();
-    const overrides = JSON.parse(byId("parameters").value || "{}");
+    const external = !byId("external-model-fields").hidden;
+    const overrides = byId("parameters").disabled ? {} : JSON.parse(byId("parameters").value || "{}");
     const model = createDeviceModel({
       deviceName: byId("device-name").value,
+      comment: byId("model-comment").value,
+      cmosParameters: variantSelect.value === "PhotoCoupler-CMOS" && !external ? collectCmos() : undefined,
+      thyristorParameters: fit.thyristorParameters,
+      variation: external ? {} : {
+        k: byId("variation-k").value,
+        min: byId("variation-min").value,
+        max: byId("variation-max").value,
+        target: byId("variation-target").value
+      },
+      externalModel: external ? {
+        libraryPath: byId("external-library").value.trim(),
+        subcircuit: byId("external-subcircuit").value.trim(),
+        pinOrder: byId("external-pin-order").value.trim().split(/[\s,]+/)
+      } : null,
       variant: variantSelect.value,
       temperature: byId("temperature").value,
       fittingError: fit.error,
       fittingWarnings: fit.warnings,
       parameterSources: fit.parameterSources,
       spiceParameters: { ...fit.parameters, ...overrides },
-      characteristicCurves: fit.curves
+      characteristicCurves: fit.curves,
+      characteristicInputs: collectData()
     });
 
     // Build the package in memory, then hand it to the browser as a download.

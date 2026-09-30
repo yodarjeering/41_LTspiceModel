@@ -1,3 +1,5 @@
+import { fitThyristor } from "./thyristorFitter.js";
+
 const VT_27 = 0.0256926;
 const BOLTZMANN_EV = 8.617333262e-5;
 
@@ -598,6 +600,10 @@ function fitPhoto(data, temperature) {
 }
 
 export function fitCharacteristics(variant, data, temperature = 27) {
+  data = normalizeInputUnits(variant, data);
+  if (variant === "PhotoCoupler-CMOS") return { parameters: {}, curves: [], error: null, warnings: ["CMOSはデータシート設定または外部ライブラリを使用します。曲線フィッティングの対象外です。"], parameterSources: {} };
+  if (variant === "PhotoMOS-Relay") return { parameters: {}, curves: [], error: null, warnings: ["メーカーの既存ライブラリを参照します。特性の再フィッティングは行いません。"], parameterSources: {} };
+  if (["Thyristor", "Triac"].includes(variant)) return fitThyristor(data.thyristorParameters, variant);
   if (variant === "Diode") return fitDiode(data, temperature);
   if (variant.startsWith("BJT")) return fitBjt(data, temperature);
   if (variant.startsWith("MOSFET")) return fitMosfet(data, temperature);
@@ -609,6 +615,10 @@ const optional = (stage, key, label, hint, columns = 2) => ({
 });
 
 export const characteristicInputs = {
+  "PhotoMOS-Relay": [],
+  "PhotoCoupler-CMOS": [],
+  Thyristor: [],
+  Triac: [],
   Diode: [
     { stage: "basic", key: "iv", label: "IF–VF特性", hint: "VF [V]  IF [A]", sample: "0.55 0.001\n0.62 0.01\n0.70 0.1" },
     optional("temperature", "temperatureIv", "IF–VF温度特性", "縦: TEMP, VF, IF / 横: VF, Y1, Y2...（温度系列とY軸単位を下で指定）", 3),
@@ -638,3 +648,41 @@ export const characteristicInputs = {
     optional("switching", "responseTime", "応答時間特性", "RL [ohm]  TR [s]  TF [s]", 3)
   ]
 };
+
+export function inputUnits(field) {
+  if (field.stage === "temperature") return field.yQuantity === "ratio" ? ["A", "ratio"] : ["V", "A"];
+  const units = [...field.hint.matchAll(/\[([^\]]+)\]/g)].map(match => match[1]);
+  while (units.length < (field.columns || 2)) units.push("ratio");
+  return units;
+}
+
+export function normalizeInputUnits(variant, input) {
+  const group = variant.startsWith("BJT") ? "BJT" : variant.startsWith("MOSFET") ? "MOSFET" : variant;
+  const data = { ...input };
+  const scales = { V: 1, mV: 1e-3, A: 1, mA: 1e-3, uA: 1e-6, F: 1, pF: 1e-12, nF: 1e-9, s: 1, us: 1e-6, ns: 1e-9, Hz: 1, MHz: 1e6, C: 1, nC: 1e-9, ohm: 1, ratio: 1, "%": 0.01 };
+  for (const field of characteristicInputs[group] || []) {
+    if (!hasData(data[field.key]) || !data[`${field.key}Units`]) continue;
+    const bases = inputUnits(field);
+    const units = data[`${field.key}Units`];
+    const factors = bases.map((base, i) => {
+      const unit = units[i] || base;
+      const choices = unitChoices(base);
+      if (!choices.includes(unit)) throw new Error(`${field.label}: 単位 ${unit} は使用できません。`);
+      return scales[unit];
+    });
+    if (field.stage === "temperature") {
+      const points = parseTemperaturePoints(data[field.key], { xKey: "X", yKey: "Y", temperatures: data[`${field.key}Temperatures`], yUnit: "A" });
+      data[field.key] = points.map(p => `${p.TEMP} ${p.X * factors[0]} ${p.Y * factors[1]}`).join("\n");
+      data[`${field.key}Temperatures`] = "";
+      data[`${field.key}Unit`] = "A";
+    } else {
+      const columns = bases.map((_, i) => `c${i}`);
+      data[field.key] = parseCsvPoints(data[field.key], columns).map(p => columns.map((column, i) => p[column] * factors[i]).join(" ")).join("\n");
+    }
+  }
+  return data;
+}
+
+export function unitChoices(base) {
+  return ({ V: ["V", "mV"], A: ["A", "mA", "uA"], F: ["F", "nF", "pF"], s: ["s", "us", "ns"], Hz: ["Hz", "MHz"], C: ["C", "nC"], ratio: ["ratio", "%"] })[base] || [base];
+}

@@ -1,4 +1,11 @@
+import { validateCmos, validateVariation } from "./modelSettings.js";
+import { fitThyristor } from "./thyristorFitter.js";
+
 const DEFINITIONS = {
+  "PhotoMOS-Relay": { modelType: "SUBCKT", polarity: "PhotoMOS", prefix: "X", pins: ["A", "K", "T1", "T2"] },
+  "PhotoCoupler-CMOS": { modelType: "SUBCKT", polarity: "CMOS", prefix: "X", pins: ["A", "K", "VCC", "GND", "OUT"] },
+  Thyristor: { modelType: "SUBCKT", polarity: "SCR", prefix: "X", pins: ["A", "G", "K"] },
+  Triac: { modelType: "SUBCKT", polarity: "TRIAC", prefix: "X", pins: ["T2", "G", "T1"] },
   Diode: { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
   "BJT-NPN": { modelType: "MODEL", polarity: "NPN", prefix: "Q", pins: ["C", "B", "E"] },
   "BJT-PNP": { modelType: "MODEL", polarity: "PNP", prefix: "Q", pins: ["C", "B", "E"] },
@@ -18,26 +25,37 @@ export function createDeviceModel(input) {
   if (!deviceName) throw new Error("Device name is required.");
   const deviceType = input.variant.startsWith("BJT") ? "BJT"
     : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant;
+  const thyristorFit = ["Thyristor", "Triac"].includes(input.variant) ? fitThyristor(input.thyristorParameters, input.variant) : null;
   return {
     schemaVersion: 1,
     deviceName,
+    comment: String(input.comment || ""),
+    characteristicInputs: input.characteristicInputs || {},
+    externalModel: input.externalModel || null,
+    cmosParameters: input.variant === "PhotoCoupler-CMOS" && !input.externalModel ? validateCmos(input.cmosParameters) : null,
+    thyristorParameters: thyristorFit?.parameters || null,
+    variation: validateVariation(input.variation, input.variant, Boolean(input.externalModel)),
     deviceType,
     variant: input.variant,
     modelType: definition.modelType,
     polarity: definition.polarity,
     symbolPrefix: definition.prefix,
     symbolBase: input.variant === "Diode" ? "diode"
+      : input.variant === "Thyristor" ? "scr"
+      : input.variant === "Triac" ? "triac"
+      : input.variant === "PhotoMOS-Relay" ? "photo-relay"
+      : input.variant === "PhotoCoupler-CMOS" ? "photo-cmos"
       : input.variant === "BJT-NPN" ? "npn"
       : input.variant === "BJT-PNP" ? "pnp"
       : input.variant.includes("NMOS") ? "nmos"
       : input.variant.includes("PMOS") ? "pmos" : "opto-coupler",
     pins: definition.pins.map((name, index) => ({ name, spiceOrder: index + 1 })),
     spiceParameters: { ...(input.spiceParameters || {}) },
-    characteristicCurves: input.characteristicCurves || [],
+    characteristicCurves: input.characteristicCurves || thyristorFit?.curves || [],
     temperature: Number.isFinite(Number(input.temperature)) ? Number(input.temperature) : 27,
     fittingError: input.fittingError ?? null,
-    fittingWarnings: input.fittingWarnings || [],
-    parameterSources: input.parameterSources || {},
+    fittingWarnings: input.fittingWarnings || thyristorFit?.warnings || [],
+    parameterSources: input.parameterSources || thyristorFit?.parameterSources || {},
     generatedAt: input.generatedAt || new Date().toISOString(),
     generatorVersion: input.generatorVersion || "1.0.0"
   };
