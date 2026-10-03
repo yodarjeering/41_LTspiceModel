@@ -43,9 +43,27 @@ test("package preserves electrical settings and applies holding-current variatio
   const model = createDeviceModel({ deviceName: "SCR", variant: "Thyristor", thyristorParameters: { IL: 0.03, IH: 0.015 }, variation: { target: "HOLDING", min: 0.8, max: 1.2 } });
   const { files } = buildPackage(model);
   const lib = files["SCR_LTspice/SCR.lib"];
-  assert.ok(lib.includes(`I(VPOWER)>(0.03*${variationName(model)})`));
-  assert.ok(lib.includes(`I(VPOWER)>(0.015*${variationName(model)})`));
+  assert.ok(lib.includes(`I(VPOWER)>=(0.03*${variationName(model)})`));
+  assert.ok(lib.includes(`I(VPOWER)>=(0.015*${variationName(model)})`));
   assert.equal(JSON.parse(files["SCR_LTspice/model.json"]).thyristorParameters.IH, 0.015);
   assert.match(files["SCR_LTspice/SCR_test.asc"], /BG 0 GATE I=V\(CMD\)/);
   assert.match(files["SCR_LTspice/README.txt"], /ラッチ/);
+});
+
+test("Normal accepts six parameters, ignores leakage inputs, and exports independent validation fixtures", () => {
+  const model = createDeviceModel({ deviceName: "NORMAL", variant: "Thyristor", thyristorParameters: {
+    modelLevel: "normal", IGT: 0.005, VGT: 0.7, IL: 0.015, IH: 0.006, VT0: 0.65, Ron: 0.08, VDRM: "", IDRM: ""
+  } });
+  assert.equal(model.modelLevel, "normal");
+  assert.equal(model.thyristorParameters.VTO, 0.65);
+  assert.equal(model.thyristorParameters.RD, 0.08);
+  assert.equal(model.thyristorParameters.ROFF, 1e12);
+  const { files } = buildPackage(model);
+  const manifest = JSON.parse(files["NORMAL_LTspice/validation.json"]);
+  assert.equal(Object.keys(manifest.tests).length, 4);
+  for (const [name, checks] of Object.entries(manifest.tests)) {
+    assert.ok(files[`NORMAL_LTspice/${name}`]);
+    assert.ok(checks.every(check => Number.isFinite(check.expected) && check.absoluteTolerance > 0));
+  }
+  assert.throws(() => fitThyristor({ modelLevel: "advanced" }));
 });

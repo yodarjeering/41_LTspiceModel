@@ -119,6 +119,27 @@ Thyristor / Triacを選ぶと、専用の数値入力欄を表示します。従
 
 ## テスト
 
+### ツェナー・ショットキー・逆方向特性
+
+Device / modelから `Diode-Zener` または `Diode-Schottky` を選択できます。専用シンボルはLTspice標準のzener.asy / schottky.asyと同じ形状・端子位置です。初期データは入力例で、対象部品のデータへ置き換えてください。
+
+通常ダイオードを含む3種類に任意の「逆方向 IR–VR特性」欄を追加しました。列順は `VR, IR`、値は正の絶対値です。電流単位はA/mA/uAを選べ、X/Y入れ替えも利用できます。ツェナーは降伏領域まで含む同じ温度の点を入力してください。
+
+逆方向データがあると、順方向IS/N/RSモデルに逆方向の区分線形近似を組み合わせた `.SUBCKT`（Prefix X）を生成します。逆方向データ未入力では従来の `.MODEL D`（Prefix D）を使用し、ツェナーの降伏特性は未校正として表示します。点の重複・負値・電流の減少はエラーです。原点を補い、最大電圧以降は最終区間の傾きで延長します。逆方向の温度依存とBV/IBVの最適化は対象外です。
+
+入力点での補間誤差は0ですが、これは測定精度やシミュレーション誤差の保証ではありません。ZIPには逆方向DC掃引回路と各入力点の直接測定、期待値を同梱します。既存の `run-ltspice-validation.mjs` で評価できます。開発用の3種類の回路は `node scripts/create-diode-validation.mjs` で生成できます。
+
+SCRのモデルレベルはNormalと従来の校正モデルを選択できます。NormalはIGT・VGT・IL・IH・VTO（VT0）・RD（Ron）を使用し、OFF抵抗は数値安定化用1TΩです。APIでは `thyristorParameters: { modelLevel: "normal", IGT, VGT, IL, IH, VT0, Ron }` を指定できます。レベル未指定のAPI入力は従来の校正モデルを維持します。Standardの曲線補間とAdvancedは未実装です。
+
+SCRパッケージにはIGT・IL・IH・オン電圧の4つの独立した `.cir` と、期待値・絶対許容誤差を保存した `validation.json` を同梱します。検証は代表ばらつき係数kで実行します。展開したフォルダを次のCLIに渡すと、LTspiceを非表示で実行し `validation-results.json` を保存します。測定欠落・許容誤差超過は失敗になります。
+
+```powershell
+node scripts/create-scr-validation.mjs
+node scripts/run-ltspice-validation.mjs "生成またはZIP展開したフォルダ"
+```
+
+LTspiceの実行ファイルを変更する場合は第2引数にパスを指定してください。ゲート消失後の保持、IL未満の非保持、IH未満の消弧、線形オン電圧、VGTを検証します。状態時定数10nsは数値設定であり、極短パルスや境界直上の条件は別途評価が必要です。
+
 ```powershell
 npm test
 ```

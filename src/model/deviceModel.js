@@ -7,6 +7,8 @@ const DEFINITIONS = {
   Thyristor: { modelType: "SUBCKT", polarity: "SCR", prefix: "X", pins: ["A", "G", "K"] },
   Triac: { modelType: "SUBCKT", polarity: "TRIAC", prefix: "X", pins: ["T2", "G", "T1"] },
   Diode: { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
+  "Diode-Zener": { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
+  "Diode-Schottky": { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
   "BJT-NPN": { modelType: "MODEL", polarity: "NPN", prefix: "Q", pins: ["C", "B", "E"] },
   "BJT-PNP": { modelType: "MODEL", polarity: "PNP", prefix: "Q", pins: ["C", "B", "E"] },
   "MOSFET-NMOS-Basic": { modelType: "MODEL", polarity: "NMOS", prefix: "M", pins: ["D", "G", "S"] },
@@ -24,7 +26,9 @@ export function createDeviceModel(input) {
   const deviceName = String(input.deviceName || "").trim().replace(/[^A-Za-z0-9_.-]/g, "_");
   if (!deviceName) throw new Error("Device name is required.");
   const deviceType = input.variant.startsWith("BJT") ? "BJT"
-    : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant;
+    : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant.startsWith("Diode") ? "Diode" : input.variant;
+  const reverseCurve = input.characteristicCurves?.find(curve => curve.name === "IR-VR");
+  const reverseMacro = deviceType === "Diode" && Boolean(reverseCurve?.points?.length);
   const thyristorFit = ["Thyristor", "Triac"].includes(input.variant) ? fitThyristor(input.thyristorParameters, input.variant) : null;
   return {
     schemaVersion: 1,
@@ -34,13 +38,16 @@ export function createDeviceModel(input) {
     externalModel: input.externalModel || null,
     cmosParameters: input.variant === "PhotoCoupler-CMOS" && !input.externalModel ? validateCmos(input.cmosParameters) : null,
     thyristorParameters: thyristorFit?.parameters || null,
+    modelLevel: thyristorFit?.parameters.modelLevel || null,
     variation: validateVariation(input.variation, input.variant, Boolean(input.externalModel)),
     deviceType,
     variant: input.variant,
-    modelType: definition.modelType,
+    modelType: reverseMacro ? "SUBCKT" : definition.modelType,
     polarity: definition.polarity,
-    symbolPrefix: definition.prefix,
+    symbolPrefix: reverseMacro ? "X" : definition.prefix,
     symbolBase: input.variant === "Diode" ? "diode"
+      : input.variant === "Diode-Zener" ? "zener"
+      : input.variant === "Diode-Schottky" ? "schottky"
       : input.variant === "Thyristor" ? "scr"
       : input.variant === "Triac" ? "triac"
       : input.variant === "PhotoMOS-Relay" ? "photo-relay"

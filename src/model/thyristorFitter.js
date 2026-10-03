@@ -5,8 +5,8 @@ export const thyristorFields = [
   ["IH", "IH 保持電流", "mA", 10, "all"],
   ["VDRM", "VDRM 漏れ電流の測定電圧", "V", 600, "all"],
   ["IDRM", "IDRM オフ時漏れ電流", "uA", 5, "all"],
-  ["VTO", "VTO オン特性の切片", "V", 0.8, "point,direct"],
-  ["RD", "RD オン特性の傾き", "ohm", 0.1, "direct"],
+  ["VTO", "VT0（VTO）オン特性の切片", "V", 0.8, "point,direct"],
+  ["RD", "Ron（RD）オン特性の傾き", "ohm", 0.1, "direct"],
   ["VTM", "VTM オン電圧（第1点）", "V", 1.2, "point,two"],
   ["ITM", "ITM：第1点の測定電流", "A", 4, "point,two"],
   ["VTM2", "オン電圧（第2点）", "V", 1.6, "two"],
@@ -19,7 +19,11 @@ export const thyristorFields = [
 export function fitThyristor(input = {}, variant = "Thyristor") {
   const p = Object.fromEntries(thyristorFields.map(([key, , unit, value]) => [key, value === "" ? null : value * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1)]));
   Object.assign(p, input);
-  p.onMode = input.onMode || "point";
+  p.modelLevel = input.modelLevel || "calibrated";
+  if (!["normal", "calibrated"].includes(p.modelLevel)) throw new Error("この実装で選択できるモデルはNormalまたは従来の校正モデルです。");
+  if (input.VT0 != null) p.VTO = input.VT0;
+  if (input.Ron != null) p.RD = input.Ron;
+  p.onMode = input.onMode || (p.modelLevel === "normal" ? "direct" : "point");
   p.q4Enabled = input.q4Enabled ?? false;
   if (!["point", "two", "direct"].includes(p.onMode)) throw new Error("オン特性の計算方法が不正です。");
   if (typeof p.q4Enabled !== "boolean") throw new Error("QIVの対応設定が不正です。");
@@ -27,7 +31,9 @@ export function fitThyristor(input = {}, variant = "Thyristor") {
     if (p[key] === "" || p[key] == null || !Number.isFinite(Number(p[key])) || Number(p[key]) <= 0) throw new Error(`${key}には正の数を指定してください。`);
     p[key] = Number(p[key]);
   };
-  for (const key of ["IGT", "VGT", "IL", "IH", "VDRM", "IDRM"]) positive(key);
+  for (const key of ["IGT", "VGT", "IL", "IH"]) positive(key);
+  if (p.modelLevel === "normal") { p.VDRM = null; p.IDRM = null; p.ROFF = 1e12; }
+  else { positive("VDRM"); positive("IDRM"); p.ROFF = p.VDRM / p.IDRM; }
   if (p.IL < p.IH) throw new Error("ILはIH以上にしてください。");
   if (p.IDRM >= p.IH) throw new Error("IDRMはIHより小さい値にしてください。");
   if (p.onMode === "two") {
@@ -42,19 +48,20 @@ export function fitThyristor(input = {}, variant = "Thyristor") {
   for (const key of ["RD", "VTO"]) positive(key);
   if (p.onMode === "direct") { p.VTM = null; p.ITM = null; }
   if (p.onMode !== "two") { p.VTM2 = null; p.ITM2 = null; }
-  if (p.VDRM <= p.VTO) throw new Error("VDRMはVTOより大きい値にしてください。");
+  if (p.modelLevel !== "normal" && p.VDRM <= p.VTO) throw new Error("VDRMはVTOより大きい値にしてください。");
   for (const key of ["IGT_Q2", "IGT_Q3", "IGT_Q4"]) {
     if (variant !== "Triac" || (key === "IGT_Q4" && !p.q4Enabled)) { p[key] = null; continue; }
     if (p[key] === "" || p[key] == null) p[key] = p.IGT;
     positive(key);
   }
   const warnings = ["入力値を単一温度・測定条件での動作値として使用します。最大定格を典型値と混同しないでください。", "温度依存・dv/dt誤点弧・di/dt制限・tq・破壊／ブレークオーバーは未モデル化。内部状態の時定数10nsは数値安定化用です。"];
+  if (p.modelLevel === "normal") warnings.push("NormalのOFF抵抗1TΩは数値安定化用の仮定です。データシートの漏れ特性ではありません。");
   if (p.onMode === "point") warnings.push("VTOを仮定し、VTM/ITMの1点からRDを算出しました。VTOもデータシートまたは曲線から指定してください。");
   if (variant === "Triac") warnings.push("IL・IH・VGT・オン特性は全象限共通。象限差はIGTのみ設定できます。");
   return { parameters: p, error: null, warnings, parameterSources: {
     IGT: "データシートのゲートトリガ電流", IL: "データシートのラッチ電流", IH: "データシートの保持電流",
     VTO: p.onMode === "two" ? "オン特性の2点直線フィット" : "ユーザー指定",
-    RD: p.onMode === "direct" ? "ユーザー指定" : "オン特性から算出", ROFF: "VDRM / IDRM"
+    RD: p.onMode === "direct" ? "ユーザー指定" : "オン特性から算出", ROFF: p.modelLevel === "normal" ? "数値安定化用1TΩ" : "VDRM / IDRM"
   }, curves: p.onMode === "direct" ? [] : [{ name: "On-state VT-IT", columns: ["VT", "IT"], points: [
     { VT: p.VTM, IT: p.ITM }, ...(p.onMode === "two" ? [{ VT: p.VTM2, IT: p.ITM2 }] : [])
   ] }] };

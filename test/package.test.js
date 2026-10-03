@@ -7,6 +7,7 @@ const expected={
   "PhotoMOS-Relay":["SUBCKT","X",["A","K","T1","T2"]], "PhotoCoupler-CMOS":["SUBCKT","X",["A","K","VCC","GND","OUT"]],
   Thyristor:["SUBCKT","X",["A","G","K"]], Triac:["SUBCKT","X",["T2","G","T1"]],
   Diode:["MODEL","D",["A","K"]], "BJT-NPN":["MODEL","Q",["C","B","E"]], "BJT-PNP":["MODEL","Q",["C","B","E"]],
+  "Diode-Zener":["MODEL","D",["A","K"]], "Diode-Schottky":["MODEL","D",["A","K"]],
   "MOSFET-NMOS-Basic":["MODEL","M",["D","G","S"]], "MOSFET-PMOS-Basic":["MODEL","M",["D","G","S"]],
   "MOSFET-NMOS-Advanced":["SUBCKT","X",["D","G","S"]], "MOSFET-PMOS-Advanced":["SUBCKT","X",["D","G","S"]], PhotoCoupler:["SUBCKT","X",["A","K","C","E"]]
 };
@@ -29,7 +30,7 @@ for(const variant of deviceOptions)test(`${variant} creates a linked, ordered pa
   assert.match(asy,/PIN .* NONE 0/);
   pins.forEach((name,i)=>assert.match(asy,new RegExp(`PINATTR PinName ${name}\\nPINATTR SpiceOrder ${i+1}`)));
   if(type==="SUBCKT") assert.match(lib,new RegExp(`\\.SUBCKT TESTDEV ${pins.join(" ")}`)); else assert.match(lib,/\.model TESTDEV/);
-  assert.match(asc,/SYMBOL TESTDEV/); assert.deepEqual(zipNames(pkg.bytes),[`${root}TESTDEV.lib`,`${root}TESTDEV.asy`,`${root}TESTDEV_test.asc`,`${root}model.json`,`${root}README.txt`]);
+  assert.match(asc,/SYMBOL TESTDEV/); assert.deepEqual(zipNames(pkg.bytes),[`${root}TESTDEV.lib`,`${root}TESTDEV.asy`,`${root}TESTDEV_test.asc`,`${root}model.json`,`${root}README.txt`, ...(variant === "Thyristor" ? ["igt", "il", "ih", "on_voltage"].map(name => `${root}TESTDEV_${name}.cir`).concat(`${root}validation.json`) : [])]);
 });
 
 test("model metadata is preserved",()=>{

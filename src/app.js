@@ -28,10 +28,13 @@ function updateThyristorFields() {
   const active = ["Thyristor", "Triac"].includes(variantSelect.value);
   const triac = variantSelect.value === "Triac";
   byId("thyristor-settings").hidden = !active;
+  const normal = byId("thyristor-level").value === "normal";
+  if (normal) byId("thyristor-mode").value = "direct";
+  byId("thyristor-mode").disabled = normal;
   byId("thyristor-q4-label").hidden = !triac;
   for (const label of document.querySelectorAll("[data-thyristor-modes]")) {
     const modes = label.dataset.thyristorModes.split(",");
-    const visible = active && (modes.includes("all") || modes.includes(byId("thyristor-mode").value) || (triac && modes.includes("triac")) || (triac && byId("thyristor-q4").checked && modes.includes("triac4")));
+    const visible = active && !(normal && ["VDRM", "IDRM"].includes(label.querySelector("input").dataset.thyristor)) && (modes.includes("all") || modes.includes(byId("thyristor-mode").value) || (triac && modes.includes("triac")) || (triac && byId("thyristor-q4").checked && modes.includes("triac4")));
     label.hidden = !visible;
     const input = label.querySelector("input");
     input.disabled = !visible;
@@ -40,7 +43,7 @@ function updateThyristorFields() {
 }
 
 function collectThyristor() {
-  const input = { onMode: byId("thyristor-mode").value, q4Enabled: byId("thyristor-q4").checked };
+  const input = { modelLevel: byId("thyristor-level").value, onMode: byId("thyristor-mode").value, q4Enabled: byId("thyristor-q4").checked };
   for (const [key, , unit] of thyristorFields) {
     const element = document.querySelector(`[data-thyristor="${key}"]`);
     if (!element.disabled) input[key] = element.value === "" ? "" : Number(element.value) * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1);
@@ -210,6 +213,7 @@ function initializeModelPicker() {
 
 // Basic and advanced variants share the same characteristic input fields.
 function characteristicGroup(variant) {
+  if (variant.startsWith("Diode")) return variant;
   if (variant.startsWith("BJT")) return "BJT";
   if (variant.startsWith("MOSFET")) return "MOSFET";
   return variant;
@@ -258,6 +262,7 @@ function renderFields() {
   }
   const stageLabels = {
     basic: "Basic parameters",
+    reverse: "Optional: 逆方向特性（区分線形フィット）",
     temperature: "Optional: 温度特性",
     capacitance: "Optional: 容量特性",
     switching: "Optional: スイッチング特性"
@@ -369,7 +374,7 @@ function runFit() {
 
 variantSelect.addEventListener("change", renderFields);
 byId("cmos-mode").addEventListener("change", renderFields);
-for (const id of ["thyristor-mode", "thyristor-q4"]) byId(id).addEventListener("change", () => {
+for (const id of ["thyristor-level", "thyristor-mode", "thyristor-q4"]) byId(id).addEventListener("change", () => {
   updateThyristorFields();
   byId("fit-output").textContent = "未フィッティング";
 });

@@ -1,8 +1,7 @@
-import { fitThyristor } from "../model/thyristorFitter.js";
 import { variationName } from "../model/modelSettings.js";
 
 export function writeThyristor(model) {
-  const p = fitThyristor(model.thyristorParameters, model.variant).parameters;
+  const p = model.thyristorParameters;
   const triac = model.variant === "Triac";
   const scale = (value, target) => model.variation?.target === target ? `(${value}*${variationName(model)})` : String(value);
   const igt = scale(p.IGT, "IGT"), il = scale(p.IL, "HOLDING"), ih = scale(p.IH, "HOLDING");
@@ -18,7 +17,7 @@ export function writeThyristor(model) {
 RTRIG${suffix} TRIG${suffix} REF 1G
 CSTATE${suffix} STATE${suffix} REF 10n IC=0
 RSTATE${suffix} STATE${suffix} REF 1
-BSTATE${suffix} REF STATE${suffix} I=if((${voltage}>0)&(((V(TRIG${suffix},REF)>0.5)&(${current}>${il}))|(V(STATE${suffix},REF)>0.5))&(${current}>${ih}),1,0)
+BSTATE${suffix} REF STATE${suffix} I=if((${voltage}>0)&(((V(TRIG${suffix},REF)>0.5)&(${current}>=${il}))|(V(STATE${suffix},REF)>0.5))&(${current}>=${ih}),1,0)
 BON${suffix} MAIN REF I=${sign}if((V(TRIG${suffix},REF)>0.5)|(V(STATE${suffix},REF)>0.5),max((${voltage}-${vto})/${rd},0),0)`;
   };
   return `* Datasheet-calibrated behavioral SCR/TRIAC; no thermal or breakdown model.
@@ -29,7 +28,7 @@ VREF REF ${triac ? "T1" : "K"} 0
 VGATE G GI 0
 DGATE GI REF ${model.deviceName}__GATE
 ${triac ? `DGATEN REF GI ${model.deviceName}__GATE\n` : ""}.model ${model.deviceName}__GATE D(IS=${gateIs} N=2 TNOM=27)
-ROFF MAIN REF ${p.VDRM / p.IDRM}
+ROFF MAIN REF ${p.ROFF}
 ${branch("P", "", forwardGate)}
 ${triac ? branch("N", "-", reverseGate) + "\n" : ""}.ENDS ${model.deviceName}
 `;

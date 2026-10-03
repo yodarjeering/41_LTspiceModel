@@ -11,6 +11,11 @@ export const symbolGeometry = {
   "opto-coupler": ["LINE Normal -96 -48 -56 -48","LINE Normal -56 -16 -56 -48","LINE Normal -56 16 -56 48","LINE Normal -96 48 -56 48","LINE Normal -80 -16 -32 -16","LINE Normal -56 16 -32 -16","LINE Normal -56 16 -80 -16","LINE Normal -80 16 -32 16","LINE Normal 96 -48 72 -48","LINE Normal 32 0 72 -48","LINE Normal 32 0 68 36","LINE Normal 32 -28 32 28","LINE Normal 96 48 80 48","LINE Normal 80 48 64 40","LINE Normal 80 48 72 32","LINE Normal 64 40 72 32","LINE Normal 24 0 12 -4","LINE Normal 24 0 20 -12","LINE Normal 20 -4 24 0","RECTANGLE Normal -96 -64 96 64","ARC Normal -4 12 20 -12 16 -4 -4 0","ARC Normal -28 12 -4 -12 -28 4 -4 0","WINDOW 0 0 -80 Center 2","WINDOW 3 0 80 Center 2"]
 };
 export const symbolPinLocations={diode:[[16,0],[16,64]],npn:[[64,0],[0,48],[64,96]],pnp:[[64,0],[0,48],[64,96]],nmos:[[48,0],[0,80],[48,96]],pmos:[[48,0],[0,80],[48,96]],"opto-coupler":[[-96,-48],[-96,48],[96,-48],[96,48]]};
+// User-provided LTspice zener.asy / schottky.asy geometry; shared A/K locations.
+symbolGeometry.zener = ["LINE Normal 0 44 -4 48", "LINE Normal 32 44 36 40", ...symbolGeometry.diode];
+symbolGeometry.schottky = ["LINE Normal 0 36 4 36", "LINE Normal 0 44 0 36", "LINE Normal 32 44 32 52", "LINE Normal 32 52 28 52", ...symbolGeometry.diode];
+symbolPinLocations.zener = symbolPinLocations.diode;
+symbolPinLocations.schottky = symbolPinLocations.diode;
 
 // Triangles match the diode: base 32, height 24.
 symbolGeometry.scr = [...symbolGeometry.diode.filter(line => !line.startsWith("WINDOW")), "LINE Normal 16 44 -4 64", "LINE Normal -4 64 -32 64", "WINDOW 0 24 0 Left 2", "WINDOW 3 24 72 Left 2"];

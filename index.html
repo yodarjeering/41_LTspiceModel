@@ -9,6 +9,7 @@
 <div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
 <div id="characteristic-fields" class="wide characteristic-grid"></div>
 <div id="thyristor-settings" class="wide" hidden>
+<label>モデルレベル<select id="thyristor-level"><option value="normal">Normal（基本動作・OFF抵抗1TΩ）</option><option value="calibrated">従来の校正モデル（VDRM/IDRM使用）</option><option disabled>Standard（曲線補間・準備中）</option><option disabled>Advanced（動特性・準備中）</option></select></label>
 <p>データシートの同じ温度・測定条件の値を入力してください。初期値は入力例です。IGT・IL・IHを動作しきい値として校正し、オン特性を VT = VTO + RD × IT で近似します。</p>
 <label>オン特性の算出方法<select id="thyristor-mode"><option value="point">VTOを指定し、VTM/ITMの1点からRDを算出</option><option value="two">オン電圧・電流の2点からVTO/RDをフィット</option><option value="direct">データシートのVTO・RDを直接指定</option></select></label>
 <label id="thyristor-q4-label" class="swap-control"><input id="thyristor-q4" type="checkbox">トライアックの第IV象限（T2負・ゲート正）に対応</label>

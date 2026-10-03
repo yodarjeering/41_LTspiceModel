@@ -368,6 +368,7 @@ button:hover {
 <div class="wide section-title"><h2>Characteristic data</h2><p>データシートのグラフから読み取った点をCSVで入力してください。</p></div>
 <div id="characteristic-fields" class="wide characteristic-grid"></div>
 <div id="thyristor-settings" class="wide" hidden>
+<label>モデルレベル<select id="thyristor-level"><option value="normal">Normal（基本動作・OFF抵抗1TΩ）</option><option value="calibrated">従来の校正モデル（VDRM/IDRM使用）</option><option disabled>Standard（曲線補間・準備中）</option><option disabled>Advanced（動特性・準備中）</option></select></label>
 <p>データシートの同じ温度・測定条件の値を入力してください。初期値は入力例です。IGT・IL・IHを動作しきい値として校正し、オン特性を VT = VTO + RD × IT で近似します。</p>
 <label>オン特性の算出方法<select id="thyristor-mode"><option value="point">VTOを指定し、VTM/ITMの1点からRDを算出</option><option value="two">オン電圧・電流の2点からVTO/RDをフィット</option><option value="direct">データシートのVTO・RDを直接指定</option></select></label>
 <label id="thyristor-q4-label" class="swap-control"><input id="thyristor-q4" type="checkbox">トライアックの第IV象限（T2負・ゲート正）に対応</label>
@@ -480,8 +481,8 @@ const thyristorFields = [
   ["IH", "IH 保持電流", "mA", 10, "all"],
   ["VDRM", "VDRM 漏れ電流の測定電圧", "V", 600, "all"],
   ["IDRM", "IDRM オフ時漏れ電流", "uA", 5, "all"],
-  ["VTO", "VTO オン特性の切片", "V", 0.8, "point,direct"],
-  ["RD", "RD オン特性の傾き", "ohm", 0.1, "direct"],
+  ["VTO", "VT0（VTO）オン特性の切片", "V", 0.8, "point,direct"],
+  ["RD", "Ron（RD）オン特性の傾き", "ohm", 0.1, "direct"],
   ["VTM", "VTM オン電圧（第1点）", "V", 1.2, "point,two"],
   ["ITM", "ITM：第1点の測定電流", "A", 4, "point,two"],
   ["VTM2", "オン電圧（第2点）", "V", 1.6, "two"],
@@ -494,7 +495,11 @@ const thyristorFields = [
 function fitThyristor(input = {}, variant = "Thyristor") {
   const p = Object.fromEntries(thyristorFields.map(([key, , unit, value]) => [key, value === "" ? null : value * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1)]));
   Object.assign(p, input);
-  p.onMode = input.onMode || "point";
+  p.modelLevel = input.modelLevel || "calibrated";
+  if (!["normal", "calibrated"].includes(p.modelLevel)) throw new Error("この実装で選択できるモデルはNormalまたは従来の校正モデルです。");
+  if (input.VT0 != null) p.VTO = input.VT0;
+  if (input.Ron != null) p.RD = input.Ron;
+  p.onMode = input.onMode || (p.modelLevel === "normal" ? "direct" : "point");
   p.q4Enabled = input.q4Enabled ?? false;
   if (!["point", "two", "direct"].includes(p.onMode)) throw new Error("オン特性の計算方法が不正です。");
   if (typeof p.q4Enabled !== "boolean") throw new Error("QIVの対応設定が不正です。");
@@ -502,7 +507,9 @@ function fitThyristor(input = {}, variant = "Thyristor") {
     if (p[key] === "" || p[key] == null || !Number.isFinite(Number(p[key])) || Number(p[key]) <= 0) throw new Error(`${key}には正の数を指定してください。`);
     p[key] = Number(p[key]);
   };
-  for (const key of ["IGT", "VGT", "IL", "IH", "VDRM", "IDRM"]) positive(key);
+  for (const key of ["IGT", "VGT", "IL", "IH"]) positive(key);
+  if (p.modelLevel === "normal") { p.VDRM = null; p.IDRM = null; p.ROFF = 1e12; }
+  else { positive("VDRM"); positive("IDRM"); p.ROFF = p.VDRM / p.IDRM; }
   if (p.IL < p.IH) throw new Error("ILはIH以上にしてください。");
   if (p.IDRM >= p.IH) throw new Error("IDRMはIHより小さい値にしてください。");
   if (p.onMode === "two") {
@@ -517,19 +524,20 @@ function fitThyristor(input = {}, variant = "Thyristor") {
   for (const key of ["RD", "VTO"]) positive(key);
   if (p.onMode === "direct") { p.VTM = null; p.ITM = null; }
   if (p.onMode !== "two") { p.VTM2 = null; p.ITM2 = null; }
-  if (p.VDRM <= p.VTO) throw new Error("VDRMはVTOより大きい値にしてください。");
+  if (p.modelLevel !== "normal" && p.VDRM <= p.VTO) throw new Error("VDRMはVTOより大きい値にしてください。");
   for (const key of ["IGT_Q2", "IGT_Q3", "IGT_Q4"]) {
     if (variant !== "Triac" || (key === "IGT_Q4" && !p.q4Enabled)) { p[key] = null; continue; }
     if (p[key] === "" || p[key] == null) p[key] = p.IGT;
     positive(key);
   }
   const warnings = ["入力値を単一温度・測定条件での動作値として使用します。最大定格を典型値と混同しないでください。", "温度依存・dv/dt誤点弧・di/dt制限・tq・破壊／ブレークオーバーは未モデル化。内部状態の時定数10nsは数値安定化用です。"];
+  if (p.modelLevel === "normal") warnings.push("NormalのOFF抵抗1TΩは数値安定化用の仮定です。データシートの漏れ特性ではありません。");
   if (p.onMode === "point") warnings.push("VTOを仮定し、VTM/ITMの1点からRDを算出しました。VTOもデータシートまたは曲線から指定してください。");
   if (variant === "Triac") warnings.push("IL・IH・VGT・オン特性は全象限共通。象限差はIGTのみ設定できます。");
   return { parameters: p, error: null, warnings, parameterSources: {
     IGT: "データシートのゲートトリガ電流", IL: "データシートのラッチ電流", IH: "データシートの保持電流",
     VTO: p.onMode === "two" ? "オン特性の2点直線フィット" : "ユーザー指定",
-    RD: p.onMode === "direct" ? "ユーザー指定" : "オン特性から算出", ROFF: "VDRM / IDRM"
+    RD: p.onMode === "direct" ? "ユーザー指定" : "オン特性から算出", ROFF: p.modelLevel === "normal" ? "数値安定化用1TΩ" : "VDRM / IDRM"
   }, curves: p.onMode === "direct" ? [] : [{ name: "On-state VT-IT", columns: ["VT", "IT"], points: [
     { VT: p.VTM, IT: p.ITM }, ...(p.onMode === "two" ? [{ VT: p.VTM2, IT: p.ITM2 }] : [])
   ] }] };
@@ -542,6 +550,8 @@ const DEFINITIONS = {
   Thyristor: { modelType: "SUBCKT", polarity: "SCR", prefix: "X", pins: ["A", "G", "K"] },
   Triac: { modelType: "SUBCKT", polarity: "TRIAC", prefix: "X", pins: ["T2", "G", "T1"] },
   Diode: { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
+  "Diode-Zener": { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
+  "Diode-Schottky": { modelType: "MODEL", polarity: "D", prefix: "D", pins: ["A", "K"] },
   "BJT-NPN": { modelType: "MODEL", polarity: "NPN", prefix: "Q", pins: ["C", "B", "E"] },
   "BJT-PNP": { modelType: "MODEL", polarity: "PNP", prefix: "Q", pins: ["C", "B", "E"] },
   "MOSFET-NMOS-Basic": { modelType: "MODEL", polarity: "NMOS", prefix: "M", pins: ["D", "G", "S"] },
@@ -559,7 +569,9 @@ function createDeviceModel(input) {
   const deviceName = String(input.deviceName || "").trim().replace(/[^A-Za-z0-9_.-]/g, "_");
   if (!deviceName) throw new Error("Device name is required.");
   const deviceType = input.variant.startsWith("BJT") ? "BJT"
-    : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant;
+    : input.variant.startsWith("MOSFET") ? "MOSFET" : input.variant.startsWith("Diode") ? "Diode" : input.variant;
+  const reverseCurve = input.characteristicCurves?.find(curve => curve.name === "IR-VR");
+  const reverseMacro = deviceType === "Diode" && Boolean(reverseCurve?.points?.length);
   const thyristorFit = ["Thyristor", "Triac"].includes(input.variant) ? fitThyristor(input.thyristorParameters, input.variant) : null;
   return {
     schemaVersion: 1,
@@ -569,13 +581,16 @@ function createDeviceModel(input) {
     externalModel: input.externalModel || null,
     cmosParameters: input.variant === "PhotoCoupler-CMOS" && !input.externalModel ? validateCmos(input.cmosParameters) : null,
     thyristorParameters: thyristorFit?.parameters || null,
+    modelLevel: thyristorFit?.parameters.modelLevel || null,
     variation: validateVariation(input.variation, input.variant, Boolean(input.externalModel)),
     deviceType,
     variant: input.variant,
-    modelType: definition.modelType,
+    modelType: reverseMacro ? "SUBCKT" : definition.modelType,
     polarity: definition.polarity,
-    symbolPrefix: definition.prefix,
+    symbolPrefix: reverseMacro ? "X" : definition.prefix,
     symbolBase: input.variant === "Diode" ? "diode"
+      : input.variant === "Diode-Zener" ? "zener"
+      : input.variant === "Diode-Schottky" ? "schottky"
       : input.variant === "Thyristor" ? "scr"
       : input.variant === "Triac" ? "triac"
       : input.variant === "PhotoMOS-Relay" ? "photo-relay"
@@ -613,6 +628,7 @@ const BOLTZMANN_EV = 8.617333262e-5;
 const parameterMappings = {
   Diode: [
     { key: "iv", stage: "basic", characteristic: "IF-VF", parameters: ["IS", "N", "RS"] },
+    { key: "reverseIv", stage: "reverse", characteristic: "IR-VR", parameters: ["reverseCurve"] },
     { key: "cjVr", stage: "capacitance", characteristic: "Cj-VR", parameters: ["CJO", "VJ", "M"] },
     { key: "temperatureIv", stage: "temperature", characteristic: "IF-VF @ multiple temperatures", parameters: ["EG", "XTI", "TNOM"] },
     { key: "reverseRecovery", stage: "switching", characteristic: "Reverse recovery", parameters: ["TT"] }
@@ -991,6 +1007,18 @@ function fitDiode(data, temperature) {
     errors: [basic.error], warnings: [], parameterSources: {}
   };
   for (const parameter of Object.keys(basic.parameters)) state.parameterSources[parameter] = "IF-VF";
+  if (hasData(data.reverseIv)) {
+    const reversePoints = parseCsvPoints(data.reverseIv, ["VR", "IR"]).sort((a, b) => a.VR - b.VR);
+    reversePoints.forEach((point, index) => {
+      if (point.VR < 0 || point.IR < 0) throw new Error("IR–VRは逆電圧・逆電流の絶対値（0以上）を入力してください。");
+      if (point.VR === 0 && point.IR !== 0) throw new Error("VR=0のIRは0にしてください。");
+      if (index && (point.VR === reversePoints[index - 1].VR || point.IR < reversePoints[index - 1].IR)) throw new Error("IR–VRは電圧の重複がなく、電流が単調増加するデータにしてください。");
+    });
+    if (reversePoints.at(-1).VR <= 0) throw new Error("IR–VRには正の逆電圧が必要です。");
+    state.curves.push({ name: "IR-VR", columns: ["VR", "IR"], points: reversePoints, approximation: "piecewise-linear", knotRmseA: 0, extrapolation: "last-segment-linear", zeroAnchor: true });
+    state.parameterSources.reverseCurve = "IR-VR：読み取り点の区分線形補間（パラメータ最適化ではない）";
+    state.warnings.push("IR–VRは単一温度の区分線形近似です。原点を補い、最大電圧の外側は最終区間の傾きで延長します。逆特性の温度依存は未対応。補間点での誤差0は測定精度やLTspice実測誤差を意味しません。");
+  }
 
   if (hasData(data.cjVr)) {
     const optionalPoints = parseCsvPoints(data.cjVr, ["VR", "CJ"]);
@@ -1209,7 +1237,11 @@ function fitCharacteristics(variant, data, temperature = 27) {
   if (variant === "PhotoCoupler-CMOS") return { parameters: {}, curves: [], error: null, warnings: ["CMOSはデータシート設定または外部ライブラリを使用します。曲線フィッティングの対象外です。"], parameterSources: {} };
   if (variant === "PhotoMOS-Relay") return { parameters: {}, curves: [], error: null, warnings: ["メーカーの既存ライブラリを参照します。特性の再フィッティングは行いません。"], parameterSources: {} };
   if (["Thyristor", "Triac"].includes(variant)) return fitThyristor(data.thyristorParameters, variant);
-  if (variant === "Diode") return fitDiode(data, temperature);
+  if (variant.startsWith("Diode")) {
+    const fit = fitDiode(data, temperature);
+    if (variant === "Diode-Zener" && !hasData(data.reverseIv)) fit.warnings.push("ツェナー降伏を再現するには、降伏領域を含むIR–VRデータを入力してください。未入力では順方向モデルのみ生成します。");
+    return fit;
+  }
   if (variant.startsWith("BJT")) return fitBjt(data, temperature);
   if (variant.startsWith("MOSFET")) return fitMosfet(data, temperature);
   return fitPhoto(data, temperature);
@@ -1226,6 +1258,7 @@ const characteristicInputs = {
   Triac: [],
   Diode: [
     { stage: "basic", key: "iv", label: "IF–VF特性", hint: "VF [V]  IF [A]", sample: "0.55 0.001\n0.62 0.01\n0.70 0.1" },
+    optional("reverse", "reverseIv", "逆方向 IR–VR特性", "VR [V]  IR [A]（正の絶対値・同じ温度。ツェナーは降伏領域も入力）"),
     optional("temperature", "temperatureIv", "IF–VF温度特性", "縦: TEMP, VF, IF / 横: VF, Y1, Y2...（温度系列とY軸単位を下で指定）", 3),
     optional("capacitance", "cjVr", "接合容量特性", "VR [V]  CJ [F]"),
     optional("switching", "reverseRecovery", "逆回復特性", "IR [A]  TRR [s]")
@@ -1253,6 +1286,11 @@ const characteristicInputs = {
     optional("switching", "responseTime", "応答時間特性", "RL [ohm]  TR [s]  TF [s]", 3)
   ]
 };
+
+characteristicInputs["Diode-Zener"] = characteristicInputs.Diode.map(field => field.key === "reverseIv" ? { ...field, sample: "1 0.00000001\n4 0.00000005\n4.8 0.0001\n5.1 0.001\n5.3 0.01" } : { ...field });
+characteristicInputs["Diode-Schottky"] = characteristicInputs.Diode.map(field => field.key === "iv" ? { ...field, sample: "0.20 0.001\n0.28 0.01\n0.38 0.1" } : { ...field });
+parameterMappings["Diode-Zener"] = parameterMappings.Diode;
+parameterMappings["Diode-Schottky"] = parameterMappings.Diode;
 
 function inputUnits(field) {
   if (field.stage === "temperature") return field.yQuantity === "ratio" ? ["A", "ratio"] : ["V", "A"];
@@ -1320,7 +1358,7 @@ BICC VCC GND I=if(V(VCC,GND)>0,${p.ICC},0)
 
 // src/ltspice/thyristorWriter.js
 function writeThyristor(model) {
-  const p = fitThyristor(model.thyristorParameters, model.variant).parameters;
+  const p = model.thyristorParameters;
   const triac = model.variant === "Triac";
   const scale = (value, target) => model.variation?.target === target ? `(${value}*${variationName(model)})` : String(value);
   const igt = scale(p.IGT, "IGT"), il = scale(p.IL, "HOLDING"), ih = scale(p.IH, "HOLDING");
@@ -1336,7 +1374,7 @@ function writeThyristor(model) {
 RTRIG${suffix} TRIG${suffix} REF 1G
 CSTATE${suffix} STATE${suffix} REF 10n IC=0
 RSTATE${suffix} STATE${suffix} REF 1
-BSTATE${suffix} REF STATE${suffix} I=if((${voltage}>0)&(((V(TRIG${suffix},REF)>0.5)&(${current}>${il}))|(V(STATE${suffix},REF)>0.5))&(${current}>${ih}),1,0)
+BSTATE${suffix} REF STATE${suffix} I=if((${voltage}>0)&(((V(TRIG${suffix},REF)>0.5)&(${current}>=${il}))|(V(STATE${suffix},REF)>0.5))&(${current}>=${ih}),1,0)
 BON${suffix} MAIN REF I=${sign}if((V(TRIG${suffix},REF)>0.5)|(V(STATE${suffix},REF)>0.5),max((${voltage}-${vto})/${rd},0),0)`;
   };
   return `* Datasheet-calibrated behavioral SCR/TRIAC; no thermal or breakdown model.
@@ -1347,10 +1385,65 @@ VREF REF ${triac ? "T1" : "K"} 0
 VGATE G GI 0
 DGATE GI REF ${model.deviceName}__GATE
 ${triac ? `DGATEN REF GI ${model.deviceName}__GATE\n` : ""}.model ${model.deviceName}__GATE D(IS=${gateIs} N=2 TNOM=27)
-ROFF MAIN REF ${p.VDRM / p.IDRM}
+ROFF MAIN REF ${p.ROFF}
 ${branch("P", "", forwardGate)}
 ${triac ? branch("N", "-", reverseGate) + "\n" : ""}.ENDS ${model.deviceName}
 `;
+}
+
+// src/ltspice/diodeWriter.js
+function writeReverseDiode(model, parameters) {
+  const curve = model.characteristicCurves.find(curve => curve.name === "IR-VR");
+  const points = curve.points.slice().sort((a, b) => a.VR - b.VR);
+  if (points[0].VR !== 0) points.unshift({ VR: 0, IR: 0 });
+  const last = points.at(-1), previous = points.at(-2);
+  const slope = (last.IR - previous.IR) / (last.VR - previous.VR);
+  const reverse = `max(-V(A,K),0)`;
+  const expression = `(table(${reverse},${points.map(p => `${p.VR},${p.IR}`).join(",")})+max(${reverse}-${last.VR},0)*${slope})`;
+  const core = { ...parameters, RS: 0, TNOM: model.temperature };
+  const staticCore = { ...core, CJO: 0, TT: 0 };
+  const params = p => Object.entries(p).filter(([, value]) => value != null && value !== "").map(([key, value]) => `${key}=${value}`).join(" ");
+  return `* Reverse IR-VR: piecewise-linear at supplied temperature; final slope extrapolation.
+.SUBCKT ${model.deviceName} A K
+RSERIES A J ${parameters.RS || 0}
+DCORE J K ${model.deviceName}__CORE
+* Isolated static replica cancels junction leakage without cancelling CJO/TT current.
+EREF RJ 0 J K 1
+DSTATIC RJ 0 ${model.deviceName}__STATIC
+BREVERSE J K I=if(V(A,K)<0,-I(DSTATIC)-${expression},0)
+.model ${model.deviceName}__CORE D(${params(core)})
+.model ${model.deviceName}__STATIC D(${params(staticCore)})
+.ENDS ${model.deviceName}
+`;
+}
+
+function writeReverseDiodeTest(model) {
+  const curve = model.characteristicCurves.find(curve => curve.name === "IR-VR");
+  if (!curve) return null;
+  const end = curve.points.at(-1).VR;
+  const checks = curve.points.map((point, index) => ({ name: `ir_${index}`, expected: point.IR, absoluteTolerance: Math.max(1e-10, point.IR * 0.01) }));
+  const forwardCurrent = 0.01;
+  const vt = 8.617333262e-5 * (273.15 + model.temperature);
+  const p = model.spiceParameters;
+  const isScale = model.variation?.target === "IS" ? model.variation.k : 1;
+  checks.push({ name: "forward_vf", expected: Number(p.N ?? 1) * vt * Math.log1p(forwardCurrent / (Number(p.IS ?? 1e-14) * isScale)) + Number(p.RS ?? 0.1) * forwardCurrent, absoluteTolerance: 0.002 });
+  return {
+    checks,
+    circuit: `Reverse diode IR-VR validation
+.include ${model.deviceName}.lib
+.temp ${model.temperature}
+VR K 0 0
+XDUT 0 K ${model.deviceName}
+IFORWARD 0 F ${forwardCurrent}
+XFORWARD F 0 ${model.deviceName}
+* Independent fixed-bias probes avoid interpolating across a sharp knee in the DC sweep.
+${curve.points.map((point, index) => `VBIAS${index} K${index} 0 ${point.VR}\nXPROBE${index} 0 K${index} ${model.deviceName}`).join("\n")}
+.dc VR 0 ${end} ${end / 2000}
+${curve.points.map((point, index) => `.meas DC ir_${index} FIND -I(VBIAS${index}) AT=${end}`).join("\n")}
+.meas DC forward_vf FIND V(F) AT=${end}
+.end
+`
+  };
 }
 
 // src/ltspice/modelWriter.js
@@ -1379,6 +1472,7 @@ function writeModel(model) {
   const header = `${comments}\n* ${model.deviceName} - generated by LTspice Model Package Generator\n* Tnom=${model.temperature} degC${variation?.target ? `\n* Variation target: ${variation.target}\n.param ${kName}=${variation.k}` : ""}`;
   if (model.deviceType === "PhotoCoupler-CMOS" && !model.externalModel) return `${header}\n${writeCmos(model)}`;
   if (["Thyristor", "Triac"].includes(model.deviceType)) return `${header}\n${writeThyristor(model)}`;
+  if (model.deviceType === "Diode" && model.modelType === "SUBCKT") return `${header}\n${writeReverseDiode(model, p)}`;
   if (model.modelType === "MODEL") {
     return `${header}\n.model ${model.deviceName} ${model.polarity}(${paramsText(p)})\n`;
   }
@@ -1422,6 +1516,11 @@ const symbolGeometry = {
   "opto-coupler": ["LINE Normal -96 -48 -56 -48","LINE Normal -56 -16 -56 -48","LINE Normal -56 16 -56 48","LINE Normal -96 48 -56 48","LINE Normal -80 -16 -32 -16","LINE Normal -56 16 -32 -16","LINE Normal -56 16 -80 -16","LINE Normal -80 16 -32 16","LINE Normal 96 -48 72 -48","LINE Normal 32 0 72 -48","LINE Normal 32 0 68 36","LINE Normal 32 -28 32 28","LINE Normal 96 48 80 48","LINE Normal 80 48 64 40","LINE Normal 80 48 72 32","LINE Normal 64 40 72 32","LINE Normal 24 0 12 -4","LINE Normal 24 0 20 -12","LINE Normal 20 -4 24 0","RECTANGLE Normal -96 -64 96 64","ARC Normal -4 12 20 -12 16 -4 -4 0","ARC Normal -28 12 -4 -12 -28 4 -4 0","WINDOW 0 0 -80 Center 2","WINDOW 3 0 80 Center 2"]
 };
 const symbolPinLocations={diode:[[16,0],[16,64]],npn:[[64,0],[0,48],[64,96]],pnp:[[64,0],[0,48],[64,96]],nmos:[[48,0],[0,80],[48,96]],pmos:[[48,0],[0,80],[48,96]],"opto-coupler":[[-96,-48],[-96,48],[96,-48],[96,48]]};
+// User-provided LTspice zener.asy / schottky.asy geometry; shared A/K locations.
+symbolGeometry.zener = ["LINE Normal 0 44 -4 48", "LINE Normal 32 44 36 40", ...symbolGeometry.diode];
+symbolGeometry.schottky = ["LINE Normal 0 36 4 36", "LINE Normal 0 44 0 36", "LINE Normal 32 44 32 52", "LINE Normal 32 52 28 52", ...symbolGeometry.diode];
+symbolPinLocations.zener = symbolPinLocations.diode;
+symbolPinLocations.schottky = symbolPinLocations.diode;
 
 // Triangles match the diode: base 32, height 24.
 symbolGeometry.scr = [...symbolGeometry.diode.filter(line => !line.startsWith("WINDOW")), "LINE Normal 16 44 -4 64", "LINE Normal -4 64 -32 64", "WINDOW 0 24 0 Left 2", "WINDOW 3 24 72 Left 2"];
@@ -1486,7 +1585,7 @@ function writeDiodeTest(model) {
     wire(480, 272, 160, 272),
     wire(160, 288, 160, 272),
     flag(160, 288, "0"),
-    ...symbol(model.deviceName, 464, 176, "D1", model.deviceName),
+    ...symbol(model.deviceName, 464, 176, model.modelType === "SUBCKT" ? "X1" : "D1", model.deviceName),
     ...symbol("voltage", 160, 160, "V1", "0"),
     "SYMBOL res 384 112 R90",
     "WINDOW 0 0 56 VBottom 2",
@@ -1494,7 +1593,7 @@ function writeDiodeTest(model) {
     "SYMATTR InstName R1",
     "SYMATTR Value 10m",
     text(96, 320, ".dc V1 0 2 1m"),
-    text(96, 352, ".meas DC IF FIND I(D1) AT=1")
+    text(96, 352, model.modelType === "SUBCKT" ? ".meas DC IF FIND -I(V1) AT=1" : ".meas DC IF FIND I(D1) AT=1")
   ]);
 }
 
@@ -1641,6 +1740,8 @@ ${model.deviceName}.asy : モデルに紐づいたLTspiceシンボル
 ${model.deviceName}_test.asc : 特性確認用テスト回路
 model.json : 生成条件・元データ・精度情報
 README.txt : この説明書
+${model.characteristicCurves.some(curve => curve.name === "IR-VR") ? `${model.deviceName}_reverse.cir : 逆方向DC掃引と入力点の直接測定\nvalidation.json : IR–VR測定の期待値・許容誤差\n` : ""}
+${model.variant === "Thyristor" ? `${model.deviceName}_{igt,il,ih,on_voltage}.cir : 独立したSCR検証回路\nvalidation.json : 各.measの期待値・絶対許容誤差（代表値kで検証）\n` : ""}
 
 3. Pin Assign（SPICE端子順）
 ${pins}
@@ -1655,13 +1756,15 @@ CMOSデータシート設定（基本単位: V/A/s）:
 ${model.cmosParameters ? `${JSON.stringify(model.cmosParameters, null, 2)}\n出力抵抗はVOH/IOH・VOL/IOLから算出。伝搬遅延は両エッジ共通。TR/TFは内部ロジックの0–100%遷移時間で、OUTの遷移は負荷にも依存します。温度依存・CMTI・保護動作は対象外。初期値は部品固有の保証値ではありません。` : "なし"}
 
 サイリスタ／トライアックのデータシート設定（V/A/Ω）:
-${model.thyristorParameters ? `${JSON.stringify(model.thyristorParameters, null, 2)}\nVT=VTO+RD*IT。onMode=pointはVTOを仮定した1点校正、twoは2点直線フィット、directは直接入力です。IGT、IL、IHを動作しきい値に使用。VGTは共通IGTにおけるゲート電圧。漏れ抵抗=VDRM/IDRM（逆方向も共通）。トライアックのQII/QIII/QIVはIGTのみ個別設定でき、QIVはq4Enabledがtrueのときのみ点弧します。IL/IH/VGT/オン特性は全象限共通。内部状態の時定数10nsは数値安定化用で、tq等の実部品の時間特性ではありません。温度、dv/dt、di/dt、ブレークオーバー、絶対最大定格超過時の破壊は未モデル化です。` : "なし"}
+${model.thyristorParameters ? `モデルレベル: ${model.modelLevel}\nVT0=VTO、Ron=RD。NormalのOFF抵抗は数値安定化用1TΩです。ラッチ成立はIA>=IL、保持解除はIA<IH。ゲート条件が継続する場合はラッチ解除後もゲートによる導通が可能です。\n` : ""}
+${model.thyristorParameters ? `${JSON.stringify(model.thyristorParameters, null, 2)}\nVT=VTO+RD*IT。onMode=pointはVTOを仮定した1点校正、twoは2点直線フィット、directは直接入力です。IGT、IL、IHを動作しきい値に使用。VGTは共通IGTにおけるゲート電圧。従来の校正モデルは漏れ抵抗=VDRM/IDRM（逆方向も共通）、Normalは数値安定化用1TΩ。トライアックのQII/QIII/QIVはIGTのみ個別設定でき、QIVはq4Enabledがtrueのときのみ点弧します。IL/IH/VGT/オン特性は全象限共通。内部状態の時定数10nsは数値安定化用で、tq等の実部品の時間特性ではありません。温度、dv/dt、di/dt、ブレークオーバー、絶対最大定格超過時の破壊は未モデル化です。` : "なし"}
 
 外部モデル:
 ${model.externalModel ? `参照先: ${model.externalModel.libraryPath}\n.SUBCKT: ${model.externalModel.subcircuit}\n元モデルの端子順: ${model.externalModel.pinOrder.join(" ")}\nモデル本体は同梱されていません。メーカーから取得した元ファイルと依存ライブラリを参照先に配置してください。電源・LED電流・負荷は使用部品の定格に合わせて調整してください。` : "なし"}
 
 4. 使用した特性データ
 ${curves}
+${model.characteristicCurves.some(curve => curve.name === "IR-VR") ? "IR–VRはVR[V], IR[A]の正の絶対値です。区分線形補間をSUBCKT内で再現し、原点(0,0)を補います。最大入力電圧を超える領域は最終区間の傾きで延長します。逆方向の温度依存は未対応。元の順方向ダイオードと容量・逆回復パラメータは保持し、静的漏れのみ補正します。降伏部を入力した場合にその降伏特性を再現します。BV/IBVの物理パラメータ最適化ではありません。" : ""}
 
 5. モデルの精度
 Fitting error: ${model.fittingError ?? "未評価"}
@@ -1714,6 +1817,41 @@ function createZip(files, date=new Date()) {
   for(const bytes of all){out.set(bytes,at);at+=bytes.length;} return out;
 }
 
+// src/ltspice/thyristorTestWriter.js
+// Independent fixtures and numeric expectations, consumed by either UI export or CLI.
+function writeThyristorTests(model) {
+  if (model.variant !== "Thyristor") return {};
+  const p = model.thyristorParameters;
+  const k = model.variation?.k ?? 1;
+  const factor = target => model.variation?.target === target ? k : 1;
+  const igt = p.IGT * factor("IGT"), il = p.IL * factor("HOLDING"), ih = p.IH * factor("HOLDING");
+  const vt = p.VTO * factor("ON_VOLTAGE"), rd = p.RD * factor("ON_VOLTAGE");
+  const load = 100;
+  const supply = current => vt + (load + rd) * current;
+  const high = 2 * il, low = 0.8 * ih, held = 1.2 * ih;
+  const gateIs = p.IGT / Math.expm1(p.VGT / (2 * 8.617333262e-5 * 300.15));
+  const gateVoltage = 2 * 8.617333262e-5 * 300.15 * Math.log1p(igt / gateIs);
+  const fixtures = {};
+  function add(name, voltage, gate, checks) {
+    const measures = checks.map(([key, at]) => `.meas tran ${key} FIND ${key === "vt" || key === "vgt" ? (key === "vt" ? "V(A)" : "V(G)") : "I(RLOAD)"} AT=${at}u`).join("\n");
+    fixtures[name] = {
+      circuit: `SCR ${name}\n.include ${model.deviceName}.lib\nVMAIN SUP 0 ${voltage}\nRLOAD SUP A ${load}\nIGATE 0 G ${gate}\nXDUT A G 0 ${model.deviceName}\n.tran 0 10u 0 2n\n${measures}\n.end\n`,
+      checks: checks.map(([key, , expected, absoluteTolerance]) => ({ name: key, expected, absoluteTolerance }))
+    };
+  }
+  const offTolerance = Math.max(1e-8, supply(high) / p.ROFF * 2);
+  const onTolerance = high * 0.01;
+  add("igt", supply(high), `PWL(0 0 1u 0 1.01u ${0.8 * igt} 3u ${0.8 * igt} 3.01u ${1.2 * igt} 5u ${1.2 * igt} 5.01u 0)`,
+    [["below_igt", 2, 0, offTolerance], ["triggered", 4, high, onTolerance], ["latched", 6, high, onTolerance]]);
+  add("il", `PWL(0 ${supply(low)} 4u ${supply(low)} 4.01u ${supply(high)})`, `PWL(0 0 1u 0 1.01u ${2 * igt} 2u ${2 * igt} 2.01u 0 5u 0 5.01u ${2 * igt} 6u ${2 * igt} 6.01u 0)`,
+    [["gate_on_below_il", 1.8, low, low * 0.01], ["not_latched", 3, 0, offTolerance], ["latched_above_il", 7, high, onTolerance]]);
+  add("ih", `PWL(0 ${supply(high)} 4u ${supply(high)} 4.01u ${supply(held)} 6u ${supply(held)} 6.01u ${supply(low)})`, `PULSE(0 ${2 * igt} 1u 1n 1n 1u 20u)`,
+    [["initial_latch", 3, high, onTolerance], ["above_ih", 5, held, held * 0.01], ["below_ih_off", 7, 0, offTolerance]]);
+  add("on_voltage", supply(high), `PULSE(0 ${igt} 1u 1n 1n 8u 20u)`,
+    [["vt", 4, vt + rd * high, 0.002], ["vgt", 4, gateVoltage, 0.002]]);
+  return fixtures;
+}
+
 // src/ltspice/packageWriter.js
 function buildPackage(model) {
   assertDeviceModel(model);
@@ -1725,6 +1863,11 @@ function buildPackage(model) {
     [`${root}model.json`]: writeJson(model),
     [`${root}README.txt`]: writeReadme(model)
   };
+  const tests = writeThyristorTests(model);
+  const reverseTest = model.deviceType === "Diode" ? writeReverseDiodeTest(model) : null;
+  if (reverseTest) tests.reverse = reverseTest;
+  for (const [name, fixture] of Object.entries(tests)) files[`${root}${model.deviceName}_${name}.cir`] = fixture.circuit;
+  if (Object.keys(tests).length) files[`${root}validation.json`] = JSON.stringify({ tests: Object.fromEntries(Object.entries(tests).map(([name, fixture]) => [`${model.deviceName}_${name}.cir`, fixture.checks])) }, null, 2) + "\n";
   return { fileName: `${model.deviceName}_LTspice.zip`, files, bytes: createZip(files, new Date(model.generatedAt)) };
 }
 
@@ -1748,10 +1891,13 @@ function updateThyristorFields() {
   const active = ["Thyristor", "Triac"].includes(variantSelect.value);
   const triac = variantSelect.value === "Triac";
   byId("thyristor-settings").hidden = !active;
+  const normal = byId("thyristor-level").value === "normal";
+  if (normal) byId("thyristor-mode").value = "direct";
+  byId("thyristor-mode").disabled = normal;
   byId("thyristor-q4-label").hidden = !triac;
   for (const label of document.querySelectorAll("[data-thyristor-modes]")) {
     const modes = label.dataset.thyristorModes.split(",");
-    const visible = active && (modes.includes("all") || modes.includes(byId("thyristor-mode").value) || (triac && modes.includes("triac")) || (triac && byId("thyristor-q4").checked && modes.includes("triac4")));
+    const visible = active && !(normal && ["VDRM", "IDRM"].includes(label.querySelector("input").dataset.thyristor)) && (modes.includes("all") || modes.includes(byId("thyristor-mode").value) || (triac && modes.includes("triac")) || (triac && byId("thyristor-q4").checked && modes.includes("triac4")));
     label.hidden = !visible;
     const input = label.querySelector("input");
     input.disabled = !visible;
@@ -1760,7 +1906,7 @@ function updateThyristorFields() {
 }
 
 function collectThyristor() {
-  const input = { onMode: byId("thyristor-mode").value, q4Enabled: byId("thyristor-q4").checked };
+  const input = { modelLevel: byId("thyristor-level").value, onMode: byId("thyristor-mode").value, q4Enabled: byId("thyristor-q4").checked };
   for (const [key, , unit] of thyristorFields) {
     const element = document.querySelector(`[data-thyristor="${key}"]`);
     if (!element.disabled) input[key] = element.value === "" ? "" : Number(element.value) * ({ mA: 1e-3, uA: 1e-6 }[unit] || 1);
@@ -1930,6 +2076,7 @@ function initializeModelPicker() {
 
 // Basic and advanced variants share the same characteristic input fields.
 function characteristicGroup(variant) {
+  if (variant.startsWith("Diode")) return variant;
   if (variant.startsWith("BJT")) return "BJT";
   if (variant.startsWith("MOSFET")) return "MOSFET";
   return variant;
@@ -1978,6 +2125,7 @@ function renderFields() {
   }
   const stageLabels = {
     basic: "Basic parameters",
+    reverse: "Optional: 逆方向特性（区分線形フィット）",
     temperature: "Optional: 温度特性",
     capacitance: "Optional: 容量特性",
     switching: "Optional: スイッチング特性"
@@ -2089,7 +2237,7 @@ function runFit() {
 
 variantSelect.addEventListener("change", renderFields);
 byId("cmos-mode").addEventListener("change", renderFields);
-for (const id of ["thyristor-mode", "thyristor-q4"]) byId(id).addEventListener("change", () => {
+for (const id of ["thyristor-level", "thyristor-mode", "thyristor-q4"]) byId(id).addEventListener("change", () => {
   updateThyristorFields();
   byId("fit-output").textContent = "未フィッティング";
 });

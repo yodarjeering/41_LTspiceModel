@@ -39,7 +39,7 @@ function writeDiodeTest(model) {
     wire(480, 272, 160, 272),
     wire(160, 288, 160, 272),
     flag(160, 288, "0"),
-    ...symbol(model.deviceName, 464, 176, "D1", model.deviceName),
+    ...symbol(model.deviceName, 464, 176, model.modelType === "SUBCKT" ? "X1" : "D1", model.deviceName),
     ...symbol("voltage", 160, 160, "V1", "0"),
     "SYMBOL res 384 112 R90",
     "WINDOW 0 0 56 VBottom 2",
@@ -47,7 +47,7 @@ function writeDiodeTest(model) {
     "SYMATTR InstName R1",
     "SYMATTR Value 10m",
     text(96, 320, ".dc V1 0 2 1m"),
-    text(96, 352, ".meas DC IF FIND I(D1) AT=1")
+    text(96, 352, model.modelType === "SUBCKT" ? ".meas DC IF FIND -I(V1) AT=1" : ".meas DC IF FIND I(D1) AT=1")
   ]);
 }
 

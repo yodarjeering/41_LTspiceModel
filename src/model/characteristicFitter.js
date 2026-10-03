@@ -8,6 +8,7 @@ const BOLTZMANN_EV = 8.617333262e-5;
 export const parameterMappings = {
   Diode: [
     { key: "iv", stage: "basic", characteristic: "IF-VF", parameters: ["IS", "N", "RS"] },
+    { key: "reverseIv", stage: "reverse", characteristic: "IR-VR", parameters: ["reverseCurve"] },
     { key: "cjVr", stage: "capacitance", characteristic: "Cj-VR", parameters: ["CJO", "VJ", "M"] },
     { key: "temperatureIv", stage: "temperature", characteristic: "IF-VF @ multiple temperatures", parameters: ["EG", "XTI", "TNOM"] },
     { key: "reverseRecovery", stage: "switching", characteristic: "Reverse recovery", parameters: ["TT"] }
@@ -386,6 +387,18 @@ function fitDiode(data, temperature) {
     errors: [basic.error], warnings: [], parameterSources: {}
   };
   for (const parameter of Object.keys(basic.parameters)) state.parameterSources[parameter] = "IF-VF";
+  if (hasData(data.reverseIv)) {
+    const reversePoints = parseCsvPoints(data.reverseIv, ["VR", "IR"]).sort((a, b) => a.VR - b.VR);
+    reversePoints.forEach((point, index) => {
+      if (point.VR < 0 || point.IR < 0) throw new Error("IR–VRは逆電圧・逆電流の絶対値（0以上）を入力してください。");
+      if (point.VR === 0 && point.IR !== 0) throw new Error("VR=0のIRは0にしてください。");
+      if (index && (point.VR === reversePoints[index - 1].VR || point.IR < reversePoints[index - 1].IR)) throw new Error("IR–VRは電圧の重複がなく、電流が単調増加するデータにしてください。");
+    });
+    if (reversePoints.at(-1).VR <= 0) throw new Error("IR–VRには正の逆電圧が必要です。");
+    state.curves.push({ name: "IR-VR", columns: ["VR", "IR"], points: reversePoints, approximation: "piecewise-linear", knotRmseA: 0, extrapolation: "last-segment-linear", zeroAnchor: true });
+    state.parameterSources.reverseCurve = "IR-VR：読み取り点の区分線形補間（パラメータ最適化ではない）";
+    state.warnings.push("IR–VRは単一温度の区分線形近似です。原点を補い、最大電圧の外側は最終区間の傾きで延長します。逆特性の温度依存は未対応。補間点での誤差0は測定精度やLTspice実測誤差を意味しません。");
+  }
 
   if (hasData(data.cjVr)) {
     const optionalPoints = parseCsvPoints(data.cjVr, ["VR", "CJ"]);
@@ -604,7 +617,11 @@ export function fitCharacteristics(variant, data, temperature = 27) {
   if (variant === "PhotoCoupler-CMOS") return { parameters: {}, curves: [], error: null, warnings: ["CMOSはデータシート設定または外部ライブラリを使用します。曲線フィッティングの対象外です。"], parameterSources: {} };
   if (variant === "PhotoMOS-Relay") return { parameters: {}, curves: [], error: null, warnings: ["メーカーの既存ライブラリを参照します。特性の再フィッティングは行いません。"], parameterSources: {} };
   if (["Thyristor", "Triac"].includes(variant)) return fitThyristor(data.thyristorParameters, variant);
-  if (variant === "Diode") return fitDiode(data, temperature);
+  if (variant.startsWith("Diode")) {
+    const fit = fitDiode(data, temperature);
+    if (variant === "Diode-Zener" && !hasData(data.reverseIv)) fit.warnings.push("ツェナー降伏を再現するには、降伏領域を含むIR–VRデータを入力してください。未入力では順方向モデルのみ生成します。");
+    return fit;
+  }
   if (variant.startsWith("BJT")) return fitBjt(data, temperature);
   if (variant.startsWith("MOSFET")) return fitMosfet(data, temperature);
   return fitPhoto(data, temperature);
@@ -621,6 +638,7 @@ export const characteristicInputs = {
   Triac: [],
   Diode: [
     { stage: "basic", key: "iv", label: "IF–VF特性", hint: "VF [V]  IF [A]", sample: "0.55 0.001\n0.62 0.01\n0.70 0.1" },
+    optional("reverse", "reverseIv", "逆方向 IR–VR特性", "VR [V]  IR [A]（正の絶対値・同じ温度。ツェナーは降伏領域も入力）"),
     optional("temperature", "temperatureIv", "IF–VF温度特性", "縦: TEMP, VF, IF / 横: VF, Y1, Y2...（温度系列とY軸単位を下で指定）", 3),
     optional("capacitance", "cjVr", "接合容量特性", "VR [V]  CJ [F]"),
     optional("switching", "reverseRecovery", "逆回復特性", "IR [A]  TRR [s]")
@@ -648,6 +666,11 @@ export const characteristicInputs = {
     optional("switching", "responseTime", "応答時間特性", "RL [ohm]  TR [s]  TF [s]", 3)
   ]
 };
+
+characteristicInputs["Diode-Zener"] = characteristicInputs.Diode.map(field => field.key === "reverseIv" ? { ...field, sample: "1 0.00000001\n4 0.00000005\n4.8 0.0001\n5.1 0.001\n5.3 0.01" } : { ...field });
+characteristicInputs["Diode-Schottky"] = characteristicInputs.Diode.map(field => field.key === "iv" ? { ...field, sample: "0.20 0.001\n0.28 0.01\n0.38 0.1" } : { ...field });
+parameterMappings["Diode-Zener"] = parameterMappings.Diode;
+parameterMappings["Diode-Schottky"] = parameterMappings.Diode;
 
 export function inputUnits(field) {
   if (field.stage === "temperature") return field.yQuantity === "ratio" ? ["A", "ratio"] : ["V", "A"];
