@@ -36,7 +36,9 @@ symbolPinLocations["photo-relay"] = [[-96,-48],[-96,48],[96,-48],[96,48]];
 symbolPinLocations["photo-cmos"] = [[-96,-48],[-96,48],[96,-48],[96,48],[96,0]];
 
 export function writeSymbol(model) {
-  assertDeviceModel(model);const base=model.symbolBase,lines=["Version 4","SymbolType CELL",...symbolGeometry[base],`SYMATTR Value ${model.deviceName}`,`SYMATTR Prefix ${model.symbolPrefix}`,`SYMATTR ModelFile ${model.deviceName}.lib`,`SYMATTR Description ${model.variant} generated from LTspice ${base} symbol`];
+  // A ModelFile attribute would auto-load the library a second time alongside
+  // the schematic's .include, duplicating global variation parameters.
+  assertDeviceModel(model);const base=model.symbolBase,lines=["Version 4","SymbolType CELL",...symbolGeometry[base],`SYMATTR Value ${model.deviceName}`,`SYMATTR Prefix ${model.symbolPrefix}`,`SYMATTR Description ${model.variant} generated from LTspice ${base} symbol`];
   model.pins.forEach((p,index)=>{const [x,y]=symbolPinLocations[base][index];lines.push(`PIN ${x} ${y} NONE 0`,`PINATTR PinName ${p.name}`,`PINATTR SpiceOrder ${p.spiceOrder}`);});
   return [...lines,""].join("\n");
 }

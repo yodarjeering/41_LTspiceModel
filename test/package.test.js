@@ -26,7 +26,7 @@ for(const variant of deviceOptions)test(`${variant} creates a linked, ordered pa
   const [type,prefix,pins]=expected[variant], model=createDeviceModel({deviceName:"TESTDEV",variant,generatedAt:"2026-08-11T00:00:00.000Z"}), pkg=buildPackage(model), root="TESTDEV_LTspice/";
   assert.equal(model.modelType,type); assert.deepEqual(model.pins.map(p=>p.name),pins);
   const lib=pkg.files[`${root}TESTDEV.lib`], asy=pkg.files[`${root}TESTDEV.asy`], asc=pkg.files[`${root}TESTDEV_test.asc`];
-  assert.match(asy,new RegExp(`SYMATTR Prefix ${prefix}`)); assert.match(asy,/SYMATTR Value TESTDEV/); assert.match(asy,/SYMATTR ModelFile TESTDEV\.lib/);
+  assert.match(asy,new RegExp(`SYMATTR Prefix ${prefix}`)); assert.match(asy,/SYMATTR Value TESTDEV/); assert.doesNotMatch(asy,/SYMATTR ModelFile/);
   assert.match(asy,/PIN .* NONE 0/);
   pins.forEach((name,i)=>assert.match(asy,new RegExp(`PINATTR PinName ${name}\\nPINATTR SpiceOrder ${i+1}`)));
   if(type==="SUBCKT") assert.match(lib,new RegExp(`\\.SUBCKT TESTDEV ${pins.join(" ")}`)); else assert.match(lib,/\.model TESTDEV/);
@@ -44,9 +44,9 @@ test("diode test schematic wires land on source and generated symbol pins",()=>{
   assert.match(asc,/SYMBOL voltage 160 160 R0/);
   assert.match(asc,/SYMBOL TEST 464 176 R0/);
   assert.match(asc,/TEXT 480 400 Left 2 !\.include TEST\.lib/);
-  assert.match(asc,/SYMBOL res 384 112 R90/);
-  assert.match(asc,/SYMATTR Value 10m/);
-  assert.match(asc,/WIRE 288 128 160 128/); // source positive to resistor
+  assert.doesNotMatch(asc,/SYMBOL res/);
+  assert.match(asc,/\.dc V1 0 5 1m/);
+  assert.match(asc,/WIRE 480 128 160 128/); // source positive directly to diode
   assert.match(asc,/WIRE 480 272 480 240/); // diode cathode to return
 });
 
@@ -100,5 +100,6 @@ test("every test schematic explicitly includes its generated model library",()=>
     const model=createDeviceModel({deviceName:"RB1LAM",variant,generatedAt:"2026-08-11T00:00:00.000Z"});
     const asc=buildPackage(model).files["RB1LAM_LTspice/RB1LAM_test.asc"];
     assert.match(asc,/!\.include RB1LAM\.lib/,variant);
+    assert.doesNotMatch(buildPackage(model).files["RB1LAM_LTspice/RB1LAM.asy"], /SYMATTR ModelFile/, variant);
   }
 });

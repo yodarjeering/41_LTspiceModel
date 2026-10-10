@@ -16,8 +16,7 @@ function symbol(name, x, y, instanceName, value) {
 }
 
 function finish(model, lines) {
-  // An explicit include makes the generated test circuit independent of
-  // whether a particular LTspice version honors the symbol's ModelFile field.
+  // Library loading is owned by the schematic; symbols do not auto-include it.
   return [
     ...HEADER,
     ...lines,
@@ -27,11 +26,10 @@ function finish(model, lines) {
   ].join("\n");
 }
 
-// Keep this layout aligned with the supplied D_test.asc reference circuit.
+// Keep this layout aligned with the supplied CMF05_test.asc reference circuit.
 function writeDiodeTest(model) {
   return finish(model, [
-    wire(288, 128, 160, 128),
-    wire(480, 128, 368, 128),
+    wire(480, 128, 160, 128),
     wire(160, 176, 160, 128),
     wire(480, 176, 480, 128),
     wire(160, 272, 160, 256),
@@ -41,12 +39,7 @@ function writeDiodeTest(model) {
     flag(160, 288, "0"),
     ...symbol(model.deviceName, 464, 176, model.modelType === "SUBCKT" ? "X1" : "D1", model.deviceName),
     ...symbol("voltage", 160, 160, "V1", "0"),
-    "SYMBOL res 384 112 R90",
-    "WINDOW 0 0 56 VBottom 2",
-    "WINDOW 3 32 56 VTop 2",
-    "SYMATTR InstName R1",
-    "SYMATTR Value 10m",
-    text(96, 320, ".dc V1 0 2 1m"),
+    text(96, 320, ".dc V1 0 5 1m"),
     text(96, 352, model.modelType === "SUBCKT" ? ".meas DC IF FIND -I(V1) AT=1" : ".meas DC IF FIND I(D1) AT=1")
   ]);
 }

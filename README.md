@@ -104,12 +104,16 @@ Thyristor / Triacを選ぶと、専用の数値入力欄を表示します。従
 
 フィッティングは基本パラメータを先に求め、その後、対応する入力欄にデータがある場合だけOptional Parameterを追加します。空欄のOptional Parameterは既定値で補わず、モデルにも出力しません。
 
-温度特性は従来の縦持ち形式（`TEMP, X, Y`）に加え、グラフ抽出ツールで一般的な横持ち形式（`X, Y1, Y2...`）を受け付けます。横持ちの場合は、UIの温度系列欄へ`25, 65, 105`のようにY列の温度を指定し、必要に応じてY軸単位を選択してください。タブ区切り内の空セルは欠測点として無視されます。2温度のみの場合は`EG=1.11 eV`に固定して`XTI`を推定し、3温度以上では`EG`と`XTI`を同時推定します。
+温度特性はCurve Data Copyの横持ち形式（`X, Y1, Y2...`）を一括貼り付けできます。ヘッダーから系列数を検出し、Y1・Y2…に対応する温度を個別に指定します。X/Y単位を選択し、空セルを欠測点として保持したタブ区切りをそのまま貼り付けてください。読込み後の温度数・測定点数を表示します。列数や温度の不一致はエラーになり、値が別の系列へずれることを防ぎます。空欄を含まない空白区切りやCSVにも対応します。「コピーしたデータの並び」を切り替えると縦持ち形式（`TEMP, X, Y`）も使えます。接合温度特性は2温度のみの場合`EG=1.11 eV`に固定して`XTI`を推定し、3温度以上では`EG`と`XTI`を同時推定します。
+
+BJTにはVBE–ICとは別に「hFE–IC温度特性」を追加しています。XはICの正の絶対値、Y列は各温度のhFEです。2温度以上・各温度2点以上から、共通IKFと `BF(T) = BF(Tnom) × ((T+273.15)/(Tnom+273.15))^XTB` を使った `hFE ≈ BF(T)/(1+IC/IKF)` を同時フィットします。BF・XTB・IKF・TNOMはLTspiceのネイティブ.MODELに反映され、`.temp` / `.step temp` で温度を変更できます。hFEの温度曲線だけでも生成できますが、IS/Nを校正するには別途VBE–ICデータが必要です。温度ごとに異なる曲線形状、低電流再結合、VCE依存はこの近似では完全に再現しません。相対RMSEを警告とmodel.jsonの曲線情報に保存します。VBE–IC温度特性も入力した場合は、そのTNOMに合わせてBFを校正します。
+
+ダイオード3種類のTestCirはCMF05_test.ascに合わせ、電源とダイオードを直結し `.dc V1 0 5 1m` で掃引します。逆方向データありのSUBCKTはX1と `-I(V1)` を使用します。ライブラリは回路の `.include` で1回だけ読み込み、シンボルのModelFileによる自動読み込みを省いてばらつきパラメータの重複定義を防ぎます。別の回路へ配置する際も `.include 部品名.lib` を1回追加してください。
 
 | Device | Optional特性 | 推定するSPICEパラメータ |
 | --- | --- | --- |
 | Diode | IF–VF温度特性 / Cj–VR / 逆回復 | `EG`, `XTI`, `TNOM` / `CJO`, `VJ`, `M` / `TT` |
-| BJT | VBE–IC温度特性 / CJC–VCB / fT–IC | `EG`, `XTI`, `TNOM` / `CJC`, `VJC`, `MJC` / `TF` |
+| BJT | VBE–IC温度特性 / hFE–IC温度特性 / CJC–VCB / fT–IC | `EG`, `XTI`, `TNOM` / `BF`, `XTB`, `IKF`, `TNOM` / `CJC`, `VJC`, `MJC` / `TF` |
 | MOSFET | VGS–ID温度特性 / CISS・COSS・CRSS / QG–VGS | `VTO`, `KP`, `TCV`, `BEX`, `TNOM` / `CGS`, `CGD`, `CBD` / `CGS` |
 | PhotoCoupler | CTR温度特性 / CCE–VCE / tr・tf–RL | `CTRTC`, `TNOM` / `CCE` / `CCE` |
 

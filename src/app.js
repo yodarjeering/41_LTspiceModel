@@ -8,6 +8,7 @@ import { buildPackage } from "./ltspice/packageWriter.js";
 import { symbolGeometry, symbolPinLocations } from "./ltspice/symbolWriter.js";
 import { cmosFields, validateCmos, variationTargets } from "./model/modelSettings.js";
 import { thyristorFields, fitThyristor } from "./model/thyristorFitter.js";
+import { createTemperatureEditor } from "./temperatureEditor.js";
 
 const byId = id => document.getElementById(id);
 const variantSelect = byId("variant");
@@ -312,15 +313,12 @@ function renderFields() {
     label.append(unitRow);
 
     if (field.stage === "temperature") {
-      const options = document.createElement("div");
       const temperatures = document.createElement("input");
       temperatures.type = "text";
       temperatures.placeholder = "Y1, Y2...の温度（例: 25, 65, 105）";
       temperatures.dataset.temperatureSeries = field.key;
-      options.className = "temperature-options";
-      options.append(temperatures);
-
-      label.append(options);
+      container.append(createTemperatureEditor(field, area, unitRow, temperatures));
+      continue;
     } else {
       label.append(swapLabel);
     }
@@ -331,6 +329,7 @@ function renderFields() {
 function collectData() {
   const fields = document.querySelectorAll("[data-characteristic]");
   const entries = [...fields].flatMap(element => {
+    if (element.dataset.inputError) throw new Error(element.dataset.inputError);
     const key = element.dataset.characteristic;
     const swap = document.querySelector(`[data-swap="${key}"]`);
     const value = swap?.checked

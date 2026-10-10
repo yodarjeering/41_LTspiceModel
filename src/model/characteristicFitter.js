@@ -20,6 +20,7 @@ export const parameterMappings = {
     { key: "icIb", stage: "basic", characteristic: "IC-IB", parameters: ["BF"] },
     { key: "junctionCapacitance", stage: "capacitance", characteristic: "CJC-VCB", parameters: ["CJC", "VJC", "MJC"] },
     { key: "temperatureIc", stage: "temperature", characteristic: "VBE-IC @ multiple temperatures", parameters: ["EG", "XTI", "TNOM"] },
+    { key: "temperatureHfe", stage: "temperature", characteristic: "hFE-IC @ multiple temperatures", parameters: ["BF", "IKF", "XTB", "TNOM"] },
     { key: "transitionFrequency", stage: "switching", characteristic: "fT-IC", parameters: ["TF"] }
   ],
   MOSFET: [
@@ -65,6 +66,7 @@ export function parseCsvPoints(text, columns) {
 }
 
 function parseTemperatureList(value) {
+  if (/[,;]/.test(String(value || "")) && String(value).split(/[,;]/).some(cell => !cell.trim())) throw new Error("Y列の温度に未指定の欄があります。");
   return String(value || "")
     .replace(/[℃°Cc]/g, " ")
     .split(/[\s,;]+/)
@@ -74,6 +76,21 @@ function parseTemperatureList(value) {
 
 function unitScale(unit) {
   return { A: 1, mA: 1e-3, uA: 1e-6, "µA": 1e-6, "μA": 1e-6 }[unit] ?? 1;
+}
+
+function temperatureCells(line) {
+  // Tabs/commas preserve missing interior Y values. Whitespace is supported
+  // for complete rows, where no missing-column position needs to be inferred.
+  return line.includes("\t") ? line.split("\t").map(cell => cell.trim())
+    : line.includes(",") ? line.split(",").map(cell => cell.trim())
+    : line.trim().split(/\s+/);
+}
+
+export function temperatureColumnCount(text) {
+  const lines = String(text || "").split(/\r?\n/).map(line => line.replace(/#.*$/, "")).filter(line => line.trim());
+  const header = [...(lines[0] || "").matchAll(/\bY(\d+)\b/gi)].map(match => Number(match[1]));
+  if (header.length) return Math.max(...header);
+  return Math.max(0, ...lines.map(line => temperatureCells(line).length - 1));
 }
 
 // Accept either long rows (TEMP, X, Y) or graph-tool-style wide rows
@@ -109,20 +126,27 @@ export function parseTemperaturePoints(text, options) {
   if (temperatures.length < 2) {
     throw new Error("横持ち温度データには、Y1以降に対応する温度を2つ以上指定してください。");
   }
+  if (temperatures.some(value => !Number.isFinite(value) || value <= -273.15) || new Set(temperatures).size !== temperatures.length) {
+    throw new Error("各Y列には重複しない温度（−273.15°Cより大きい数値）を指定してください。");
+  }
+  if (temperatureColumnCount(text) !== temperatures.length) throw new Error("Y列の数と指定した温度の数を合わせてください。空欄はタブ区切りのまま貼り付けてください。");
 
   const points = [];
   for (const line of lines) {
-    const cells = line.includes("\t")
-      ? line.split("\t").map(cell => cell.trim())
-      : line.split(",").map(cell => cell.trim());
-    const x = Number(cells[0]);
-    if (!Number.isFinite(x)) continue; // Header row.
+    const cells = temperatureCells(line);
+    const x = Number(cells[0].replace(/[dD]([+-]?\d+)$/, "e$1"));
+    if (!Number.isFinite(x)) {
+      if (line === lines[0]) continue; // Header row.
+      throw new Error("温度データのX列には数値を入力してください。");
+    }
+    if (cells[0] === "") throw new Error("Xが空欄の測定行があります。");
+    if (cells.length > temperatures.length + 1 || (!/[\t,]/.test(line) && cells.length !== temperatures.length + 1)) throw new Error("列の位置を判別できません。欠測点を含む行はタブ区切りのまま貼り付けてください。");
 
     temperatures.forEach((temperature, index) => {
       const rawY = cells[index + 1];
       if (rawY == null || rawY === "") return;
       const y = Number(rawY.replace(/[dD]([+-]?\d+)$/, "e$1"));
-      if (!Number.isFinite(y)) return;
+      if (!Number.isFinite(y)) throw new Error(`Y${index + 1}には数値または空欄を入力してください。`);
       points.push({ TEMP: temperature, [xKey]: x, [yKey]: y * scale });
     });
   }
@@ -425,6 +449,43 @@ function fitDiode(data, temperature) {
   return result(state.parameters, state.curves, state.errors, state.warnings, state.parameterSources);
 }
 
+function fitTemperatureGain(points, nominal) {
+  if (!(nominal > -273.15) || points.some(p => !(p.TEMP > -273.15 && p.IC > 0 && p.hFE > 0))) throw new Error("hFE温度特性には有効な温度と正のIC・hFEを入力してください。");
+  const groups = new Map();
+  points.forEach(p => groups.set(p.TEMP, (groups.get(p.TEMP) || 0) + 1));
+  if (groups.size < 2 || [...groups.values()].some(count => count < 2)) throw new Error("hFE温度特性には2温度以上、各温度2点以上を入力してください。");
+  // In forward active Gummel-Poon operation, beta is approximately
+  // BF*(T/Tnom)^XTB / (1 + IC/IKF). For each trial IKF, BF and XTB
+  // follow from linear regression in log space; optimize IKF in one dimension.
+  function evaluate(logIkf) {
+    const ikf = Math.exp(logIkf);
+    const fit = linearFit(points.map(p => ({ x: Math.log((p.TEMP + 273.15) / (nominal + 273.15)), y: Math.log(p.hFE) + Math.log1p(p.IC / ikf) })));
+    return { ...fit, ikf, cost: fit.rmse ** 2 };
+  }
+  const low = Math.log(Math.min(...points.map(p => p.IC)) / 1000);
+  const high = Math.log(Math.max(...points.map(p => p.IC)) * 1e6);
+  const step = (high - low) / 120;
+  let best = low;
+  for (let i = 1; i <= 120; i++) if (evaluate(low + i * step).cost < evaluate(best).cost) best = low + i * step;
+  let left = Math.max(low, best - step), right = Math.min(high, best + step);
+  for (let i = 0; i < 70; i++) {
+    const a = left + (right - left) / 3, b = right - (right - left) / 3;
+    if (evaluate(a).cost < evaluate(b).cost) right = b; else left = a;
+  }
+  const fit = evaluate((left + right) / 2);
+  const bf = Math.exp(fit.intercept);
+  if (!Number.isFinite(bf) || !(bf > 0) || !Number.isFinite(fit.slope)) throw new Error("hFE温度特性から有効なBF/XTBを推定できませんでした。");
+  const relativeRmse = Math.sqrt(points.reduce((sum, p) => {
+    const predicted = bf * ((p.TEMP + 273.15) / (nominal + 273.15)) ** fit.slope / (1 + p.IC / fit.ikf);
+    return sum + (predicted / p.hFE - 1) ** 2;
+  }, 0) / points.length);
+  const error = Math.sqrt(points.reduce((sum, p) => {
+    const predicted = bf * ((p.TEMP + 273.15) / (nominal + 273.15)) ** fit.slope / (1 + p.IC / fit.ikf);
+    return sum + (predicted - p.hFE) ** 2;
+  }, 0) / points.length);
+  return { parameters: { BF: format(bf), XTB: format(fit.slope), TNOM: format(nominal), ...(fit.ikf < Math.exp(high) * 0.99 ? { IKF: format(fit.ikf) } : {}) }, relativeRmse, error };
+}
+
 function fitBjt(data, temperature) {
   const state = { parameters: {}, curves: [], errors: [], warnings: [], parameterSources: {} };
   const gains = [];
@@ -465,8 +526,7 @@ function fitBjt(data, temperature) {
   }
 
   if (!state.parameters.IS) state.warnings.push("VBE-ICデータがないためIS/Nは設定しません。");
-  if (!state.parameters.BF) state.warnings.push("hFE-ICまたはIC-IBデータがないためBFは設定しません。");
-  if (!state.curves.length) throw new Error("BJTはVBE-IC、hFE-IC、IC-IBのいずれかを入力してください。");
+  if (!state.curves.length && !hasData(data.temperatureHfe)) throw new Error("BJTはVBE-IC、hFE-IC、IC-IB、hFE-IC温度特性のいずれかを入力してください。");
 
   if (hasData(data.junctionCapacitance)) {
     const points = parseCsvPoints(data.junctionCapacitance, ["VCB", "CJC"]);
@@ -484,6 +544,15 @@ function fitBjt(data, temperature) {
     }, "VBE-IC @ multiple temperatures");
     if (temperatureFit.warning) state.warnings.push(temperatureFit.warning);
   }
+  if (hasData(data.temperatureHfe)) {
+    const points = parseTemperaturePoints(data.temperatureHfe, { xKey: "IC", yKey: "hFE", temperatures: data.temperatureHfeTemperatures, yUnit: "ratio" });
+    const fitted = fitTemperatureGain(points, Number(state.parameters.TNOM ?? temperature));
+    delete state.parameters.IKF;
+    delete state.parameterSources.IKF;
+    mergeOptional(state, fitted, { name: "hFE-IC @ temperature", columns: ["TEMP", "IC", "hFE"], points, approximation: "BF(T) / (1 + IC / IKF)", relativeRmse: fitted.relativeRmse }, "hFE-IC @ multiple temperatures");
+    state.warnings.push(`hFE温度特性はBF・XTB・共通IKFで近似（相対RMSE ${(fitted.relativeRmse * 100).toFixed(1)}%）。各温度の曲線形状・VCE依存・低電流再結合の完全再現は対象外です。`);
+  }
+  if (!state.parameters.BF) state.warnings.push("hFE-ICまたはIC-IBデータがないためBFは設定しません。");
   if (hasData(data.transitionFrequency)) {
     const points = parseCsvPoints(data.transitionFrequency, ["IC", "FT"]);
     const tf = median(points.filter(point => point.FT > 0).map(point => 1 / (2 * Math.PI * point.FT)));
@@ -648,6 +717,7 @@ export const characteristicInputs = {
     { stage: "basic", key: "hfeIc", label: "hFE–IC特性（基本・任意）", hint: "IC [A]  hFE", sample: "0.001 120\n0.01 180\n0.1 150" },
     { stage: "basic", key: "icIb", label: "IC–IB特性（基本・任意）", hint: "IB [A]  IC [A]", sample: "" },
     optional("temperature", "temperatureIc", "VBE–IC温度特性", "縦: TEMP, VBE, IC / 横: VBE, Y1, Y2...（温度系列とY軸単位を下で指定）", 3),
+    { ...optional("temperature", "temperatureHfe", "hFE–IC温度特性", "縦: TEMP, IC, hFE / 横: IC, Y1, Y2...（電流は正の絶対値）", 3), yQuantity: "ratio" },
     optional("capacitance", "junctionCapacitance", "コレクタ接合容量", "VCB [V]  CJC [F]"),
     optional("switching", "transitionFrequency", "遷移周波数特性", "IC [A]  FT [Hz]")
   ],

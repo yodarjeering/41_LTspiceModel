@@ -11,6 +11,7 @@ export function writeReadme(model) {
 1. LTspiceでの使い方
 このフォルダ内の ${model.deviceName}_test.asc をLTspiceで開き、Runを実行してください。
 新しい回路で使う場合は、.ascと同じフォルダに ${model.deviceName}.asy と ${model.deviceName}.lib を置き、Place ComponentのSchematic Directoryから ${model.deviceName} を配置します。
+回路に .include ${model.deviceName}.lib を1回だけ追加してください。重複定義を防ぐため、シンボルからの自動読み込み（ModelFile）は使用しません。
 別フォルダへ恒久登録する場合は、LTspiceのSymbol Search PathsとSimulation Library Search Pathsを設定してください。
 
 2. 各ファイルの説明

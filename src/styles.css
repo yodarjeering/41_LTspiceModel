@@ -266,6 +266,22 @@ small,
   gap: 8px;
 }
 
+.temperature-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #31564a;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #122b22, #0c1d18);
+}
+
+.temperature-card .temperature-options { grid-template-columns: repeat(2, 1fr); }
+.temperature-paste { font-family: Consolas, monospace; tab-size: 16; white-space: pre; overflow: auto; line-height: 1.65; }
+.temperature-series { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.temperature-error { color: #ffb49e; }
+
 .fit-result,
 .actions {
   display: flex;
